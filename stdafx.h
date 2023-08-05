@@ -27,6 +27,7 @@
 
 #include <stdio.h>
 #include <tchar.h>
+#include <limits.h>
 #define _ATL_CSTRING_EXPLICIT_CONSTRUCTORS  // some CString constructors will be explicit
 
 #ifndef VC_EXTRALEAN
@@ -53,4 +54,6 @@
 #define LOG(fmt, ...) fprintf(stdout, fmt ## "\n", __VA_ARGS__)
 
 int CompareRunaways(int argc, char** argv, bool directory);
-
+int CreateThreads(int argc, char** argv);
+int PerfCounter(int argc, char** argv);
+int PatchBin(int argc, char** argv);

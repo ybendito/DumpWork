@@ -1,16 +1,33 @@
-// DumpWork.cpp : This file contains the 'main' function. Program execution begins and ends there.
-//
-
 #include "stdafx.h"
 
-static int Usage()
+struct tCommandEntry
 {
-    puts("DumpWork action parameters...");
-    puts("Actions:");
-    puts("\tcr\t\t\tCompare 2 runaway files");
-    puts("\t\t\t\tParameters: file1 file2");
-    puts("\tcrd\t\t\tCompare all the runaway files in a directory");
-    puts("\t\t\t\tParameters: directory");
+    LPCSTR Shortcut;
+    LPCSTR Desc;
+    LPCSTR Help;
+    int (*Proc)(int argc, char** argv);
+};
+
+tCommandEntry Commands[] =
+{
+    { "cr", "Compare 2 runaways files", "<file1> <file2>", [](int argc, char** argv) -> int { return CompareRunaways(argc, argv, false); }},
+    { "crd", "Compare all runaways files in a directory", "<directory>", [](int argc, char** argv) -> int { return CompareRunaways(argc, argv, true); }},
+    { "load", "Load CPU by threads", "<num of threads>", CreateThreads },
+    { "perf", "Monitor perf counters", "<name> ... <name>", PerfCounter },
+    { "patch", "Patch binary", "<name> <pattern> <pattern> [target chunk]", PatchBin },
+};
+
+static int Usage(LPCSTR ShortCut = NULL)
+{
+    for (UINT i = 0; i < ARRAYSIZE(Commands); ++i) {
+        auto& cmd = Commands[i];
+        if (!ShortCut) {
+            printf("%s\t%s\n", cmd.Shortcut, cmd.Desc);
+        } else if (!_stricmp(ShortCut, cmd.Shortcut)) {
+            printf("%s\n", cmd.Desc);
+            printf("%s %s\n", cmd.Shortcut, cmd.Help);
+        }
+    }
     return 1;
 }
 
@@ -18,20 +35,15 @@ int main(int argc, char **argv)
 {
     if (argc < 2)
         return Usage();
-    if (!_stricmp(argv[1], "cr")) {
-        return CompareRunaways(argc - 2, argv + 2, false);
-    } else if (!_stricmp(argv[1], "crd")) {
-        return CompareRunaways(argc - 2, argv + 2, true);
+    for (UINT i = 0; i < ARRAYSIZE(Commands); ++i) {
+        auto& cmd = Commands[i];
+        if (!_stricmp(argv[1], cmd.Shortcut)) {
+            if (argc > 2 && strchr(argv[2], '?')) {
+                return Usage(cmd.Shortcut);
+            }
+            return cmd.Proc(argc - 2, argv + 2);
+        }
     }
+    return Usage();
 }
 
-// Run program: Ctrl + F5 or Debug > Start Without Debugging menu
-// Debug program: F5 or Debug > Start Debugging menu
-
-// Tips for Getting Started: 
-//   1. Use the Solution Explorer window to add/manage files
-//   2. Use the Team Explorer window to connect to source control
-//   3. Use the Output window to see build output and other messages
-//   4. Use the Error List window to view errors
-//   5. Go to Project > Add New Item to create new code files, or Project > Add Existing Item to add existing code files to the project
-//   6. In the future, to open this project again, go to File > Open > Project and select the .sln file
