@@ -111,17 +111,15 @@ protected:
 class CLoadingThread : public CThreadOwner
 {
 public:
-    CLoadingThread(CWaitableObject& WaitOn) : m_Obj(WaitOn)
+    CLoadingThread(CWaitableObject& WaitOn, ULONG& Loops) :
+        m_Obj(WaitOn),
+        m_Loops(Loops)
     {
 
     }
-    void SetLoad(ULONG Loops)
-    {
-        m_Loops = Loops;
-    }
 private:
     CWaitableObject& m_Obj;
-    ULONG m_Loops = 0;
+    ULONG& m_Loops;
     void ThreadProc() override
     {
         BYTE hash[128] = {};
@@ -146,7 +144,7 @@ class CThreadCollection : public CThreadOwner
 {
     const ULONG MAX_THREADS = 4096;
 public:
-    CThreadCollection(ULONG ThreadsCount, ULONG CpuUsage) :
+    CThreadCollection(ULONG ThreadsCount) :
         m_Semaphore(MAX_THREADS, MAX_THREADS)
     {
         for (UINT i = 0; i < ThreadsCount; ++i) {
@@ -155,7 +153,8 @@ public:
     }
     ~CThreadCollection()
     {
-        ChangeLoad(false, true);
+        m_Loops = 1;
+
         for (INT i = 0; i < m_Threads.GetCount(); ++i) {
             CLoadingThread* p = m_Threads[i];
             p->StopThread();
@@ -168,30 +167,25 @@ public:
             delete p;
         }
     }
-    void ChangeLoad(bool Increment, bool BusyLoop = false)
+    void ToggleBusyLoop()
     {
-        if (BusyLoop && Increment) {
-            m_Loops |= 0x80000000;
-        } else if (BusyLoop && !Increment) {
-            m_Loops &= ~0x80000000;
-        } else if (Increment) {
+        m_Loops ^= 0x80000000;
+    }
+    void ChangeLoad(bool Increment)
+    {
+        if (Increment) {
             m_Loops++;
         } else if (m_Loops) {
             m_Loops--;
         }
-
-        for (INT i = 0; i < m_Threads.GetCount(); ++i) {
-            CLoadingThread* p = m_Threads[i];
-            p->SetLoad(m_Loops);
-        }
     }
+    ULONG Load() const { return m_Loops; }
     void AddThread()
     {
-        CLoadingThread* p = new CLoadingThread(m_Semaphore);
+        CLoadingThread* p = new CLoadingThread(m_Semaphore, m_Loops);
         if (p) {
             m_Threads.Add(p);
             p->StartThread();
-            p->SetLoad(m_Loops);
         }
         m_Semaphore.Signal();
     }
@@ -209,18 +203,16 @@ private:
 
 int CreateThreads(int argc, char** argv)
 {
-    if (argc < 2)
+    if (argc < 1)
         return 1;
     ULONG numThreads = atoi(argv[0]);
-    ULONG cpuUsage = atoi(argv[1]);
 
-    CThreadCollection t(numThreads, cpuUsage);
+    CThreadCollection t(numThreads);
 
-    if (cpuUsage > 99) cpuUsage = 99;
     char line[256] = "";
     char* s = line;
     puts("Interactive mode:");
-    puts("i(nc),d(ec),t(read add),B(usy loop on),b(usy loop off)");
+    puts("i(nc),d(ec),t(read add),b(usy loop troggle)");
     do
     {
         s = fgets(line, sizeof(line), stdin);
@@ -231,15 +223,14 @@ int CreateThreads(int argc, char** argv)
             case 'i':
             case 'd':
                 while (s[n++] == s[0]) t.ChangeLoad(s[0] == 'i');
+                LOG("current loop limit 0x%X", t.Load());
                 break;
             case 't':
                 while (s[n++] == s[0]) t.AddThread();
                 break;
             case 'b':
-                t.ChangeLoad(false, true);
-                break;
-            case 'B':
-                t.ChangeLoad(true, true);
+                t.ToggleBusyLoop();
+                LOG("current loop limit 0x%X", t.Load());
                 break;
             case 'q':
                 n = -1;
