@@ -107,39 +107,31 @@ protected:
     CArray<CPdhCounter> m_Counters;
 };
 
-static void RunAction(int argc, char** argv)
+static void RunAction(const CStringArray& Params)
 {
-    if (argc < 3) {
+    if (Params.GetCount() < 3) {
         LOG("nothing to run");
         return;
     }
     CString cmd;
-    cmd.Format(argv[2], argv[0]);
-    for (int i = 3; i < argc; ++i) {
+    cmd.Format(Params[2], Params[0].GetString());
+    for (int i = 3; i < Params.GetCount(); ++i) {
         cmd += ' ';
         CString arg;
-        arg.Format(argv[i], argv[0]);
+        arg.Format(Params[i], Params[0].GetString());
         cmd += arg;
     }
     LOG("running %s", cmd.GetString());
     system(cmd);
 }
 
-int PerfCounter(int argc, char** argv)
+static int PerfCounter(const CStringArray& Parameters)
 {
     ULONG timeToSleep = 100;
-    if (argc < 1 || !_stricmp(argv[0], "help")) {
-        puts("@1     Counter for monitoring");
-        puts("       or executable name without extension");
-        puts("@2     Limit to stop monitoring (decimal)");
-        puts("@3...  Command and parameters to run");
-        puts("       Use %s for @1");
-        return 1;
-    }
     CPdhQuery q;
     long val = 0;
     long limit = -1;
-    if (!q.Add(argv[0])) {
+    if (!q.Add(Parameters[0])) {
         return 1;
     }
 
@@ -147,8 +139,8 @@ int PerfCounter(int argc, char** argv)
         return 1;
     }
     Sleep(timeToSleep);
-    if (argc >= 2) {
-        limit = atoi(argv[1]);
+    if (Parameters.GetCount() >= 2) {
+        limit = atoi(Parameters[1]);
     }
     if (limit >= 0) {
         LOG("Running till value < %d", limit);
@@ -157,10 +149,31 @@ int PerfCounter(int argc, char** argv)
     while (q.Poll(&val, 1) && !_kbhit() )
     {
         if (limit >= 0 && val >= limit) {
-            RunAction(argc, argv);
+            RunAction(Parameters);
             break;
         }
         Sleep(timeToSleep);
     }
     return 0;
 }
+
+class CPerfHandler : public CCommandHandler
+{
+public:
+    CPerfHandler() : CCommandHandler("perf", "Monitors perf counter", 1) {}
+private:
+    int Run(const CStringArray& Parameters) override
+    {
+        return PerfCounter(Parameters);
+    }
+    void Help(CStringArray& a) override
+    {
+        a.Add("@1     Counter for monitoring");
+        a.Add("       or executable name without extension");
+        a.Add("@2     Limit to stop monitoring (decimal)");
+        a.Add("@3...  Command and parameters to run");
+        a.Add("       Use %s for @1");
+    }
+};
+
+static CPerfHandler ph;

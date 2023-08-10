@@ -268,7 +268,45 @@ void CThreadArray::Diff(const CThreadArray& Arr1, const CThreadArray& Arr2)
     }
 }
 
-static int CompareDir(char* dir)
+static int CompareDir(const char* dir);
+static int CompareRunaways(bool directory, const char *f1, const char *f2)
+{
+    CThreadArray a1, a2;
+    if (directory)
+        return CompareDir(f1);
+    if (f1 && f2) {
+        if (!a1.Load(f1) || !a2.Load(f2)) {
+            return 1;
+        }
+    } else if (f1) {
+        if (!a1.Load(f1)) {
+            return 1;
+        }
+        a2.MakeBaseFor(a1);
+    } else {
+        return 1;
+    }
+
+    LOG("Comparing data:");
+    LOG("[1]: %s", f1);
+    LOG("[2]: %s", f2 ? f2 : "<dummy>");
+    int diff = CThreadArray::Compare(a1, a2);
+    if (!diff) {
+        LOG("Can't compare results");
+        return 1;
+    }
+    else if (diff > 0) {
+        LOG("First one is later, comparing");
+        CThreadArray::Diff(a1, a2);
+    }
+    else if (diff < 0) {
+        LOG("First one is earlier, comparing");
+        CThreadArray::Diff(a2, a1);
+    }
+    return 0;
+}
+
+int CompareDir(const char* dir)
 {
     CString sWildCard = dir;
     sWildCard += "\\*.txt";
@@ -299,7 +337,7 @@ static int CompareDir(char* dir)
         int res;
         if (i == 0) {
             char* s = (char *)files[i].GetString();
-            res = CompareRunaways(1, &s, false);
+            res = CompareRunaways(false, s, NULL);
             continue;
         }
         char* s[2];
@@ -307,46 +345,40 @@ static int CompareDir(char* dir)
         s[1] = (char*)files[i].GetString();
         puts("");
         puts("----------------------------------------------------------------");
-        res = CompareRunaways(2, s, false);
+        res = CompareRunaways(false, s[0], s[1]);
     }
     return 0;
 }
 
-int CompareRunaways(int argc, char** argv, bool directory)
+class CRunawayHandler : public CCommandHandler
 {
-    CThreadArray a1, a2;
-    switch (argc) {
-        case 2:
-            if (!a1.Load(argv[0]) || !a2.Load(argv[1])) {
-                return 1;
-            }
-            break;
-        case 1:
-            if (directory) {
-                return CompareDir(argv[0]);
-            } else if (!a1.Load(argv[0])) {
-                return 1;
-            }
-            a2.MakeBaseFor(a1);
-            break;
-        default:
-            ERR("cr <filename> [filename]");
-            return 1;
+public:
+    CRunawayHandler() : CCommandHandler("cr", "Compare 2 runaways files", 2) {}
+private:
+    int Run(const CStringArray& Parameters) override
+    {
+        return CompareRunaways(false, Parameters[0], Parameters[1]);
     }
+    void Help(CStringArray& a) override
+    {
+        a.Add("<file1> <file2>");
+    }
+};
 
-    LOG("Comparing data:");
-    LOG("[1]: %s", argv[0]);
-    LOG("[2]: %s", argc > 1 ? argv[1] : "<dummy>");
-    int diff = CThreadArray::Compare(a1, a2);
-    if (!diff) {
-        LOG("Can't compare results");
-        return 1;
-    } else if (diff > 0) {
-        LOG("First one is later, comparing");
-        CThreadArray::Diff(a1, a2);
-    } else if (diff < 0) {
-        LOG("First one is earlier, comparing");
-        CThreadArray::Diff(a2, a1);
+class CRunawayDirHandler : public CCommandHandler
+{
+public:
+    CRunawayDirHandler() : CCommandHandler("crd", "Compare all runaways files in a directory", 2) {}
+private:
+    int Run(const CStringArray& Parameters) override
+    {
+        return CompareRunaways(false, Parameters[0], Parameters[1]);
     }
-    return 0;
-}
+    void Help(CStringArray& a) override
+    {
+        a.Add("<directory>");
+    }
+};
+
+static CRunawayHandler rh;
+static CRunawayDirHandler rdh;

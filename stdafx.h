@@ -52,9 +52,4 @@
 
 #define ERR(fmt, ...) fprintf(stderr, "DumpWork:" ## fmt ## "\n", __VA_ARGS__)
 #define LOG(fmt, ...) fprintf(stdout, fmt ## "\n", __VA_ARGS__)
-
-int CompareRunaways(int argc, char** argv, bool directory);
-int CreateThreads(int argc, char** argv);
-int PerfCounter(int argc, char** argv);
-int PatchBin(int argc, char** argv);
-int FilesCmd(int argc, char** argv);
+#include "engine.h"

@@ -1,48 +1,69 @@
 #include "stdafx.h"
 
-struct tCommandEntry
-{
-    LPCSTR Shortcut;
-    LPCSTR Desc;
-    LPCSTR Help;
-    int (*Proc)(int argc, char** argv);
-};
+CArray<CCommandHandler*> CCommandHandler::m_Handlers;
 
-tCommandEntry Commands[] =
-{
-    { "cr", "Compare 2 runaways files", "<file1> <file2>", [](int argc, char** argv) -> int { return CompareRunaways(argc, argv, false); }},
-    { "crd", "Compare all runaways files in a directory", "<directory>", [](int argc, char** argv) -> int { return CompareRunaways(argc, argv, true); }},
-    { "load", "Load CPU by threads", "<num of threads>", CreateThreads },
-    { "perf", "Monitor perf counters", "help for details", PerfCounter },
-    { "patch", "Patch binary", "<name> <pattern> <pattern> [target chunk]", PatchBin },
-    { "files", "File operations", "hold <filename>", FilesCmd },
-};
+tConfiguration tConfiguration::m_ConfigurationForCfgOnly;
 
-static int Usage(LPCSTR ShortCut = NULL)
+static int Usage()
 {
-    for (UINT i = 0; i < ARRAYSIZE(Commands); ++i) {
-        auto& cmd = Commands[i];
-        if (!ShortCut) {
-            printf("%s\t%s\n", cmd.Shortcut, cmd.Desc);
-        } else if (!_stricmp(ShortCut, cmd.Shortcut)) {
-            printf("%s\n", cmd.Desc);
-            printf("%s %s\n", cmd.Shortcut, cmd.Help);
-        }
+    auto& handlers = CCommandHandler::m_Handlers;
+    puts("DumpWork: various utilities");
+    for (UINT i = 0; i < handlers.GetSize(); ++i) {
+        auto h = handlers[i];
+        printf("%s\t\t\t%s\n", h->Token().GetString(), h->Description().GetString());
     }
     return 1;
 }
 
+static void ProcessConfig(CStringArray& a)
+{
+    tConfiguration& cfg = tConfiguration::m_ConfigurationForCfgOnly;
+    for (UINT i = 0; i < a.GetCount(); ++i) {
+        auto& s = a[i];
+        s.MakeLower();
+        if (s[0] == '?' && s.Find("help")) {
+            cfg.Help = true;
+        } else {
+            LOG("Unrecognized config %s", s.GetString());
+        }
+    }
+}
+
 int main(int argc, char **argv)
 {
-    if (argc < 2)
+    CStringArray params;
+    CStringArray config;
+    for (int i = 1; i < argc; ++i) {
+        CString s = argv[i];
+        if (s[0] == '/' || s[0] == '-') {
+            s.Delete(0);
+            config.Add(s);
+        } else if (s[0] == '?') {
+            config.Add("?");
+        } else {
+            params.Add(s);
+        }
+    }
+    ProcessConfig(config);
+    if (params.IsEmpty()) {
         return Usage();
-    for (UINT i = 0; i < ARRAYSIZE(Commands); ++i) {
-        auto& cmd = Commands[i];
-        if (!_stricmp(argv[1], cmd.Shortcut)) {
-            if (argc > 2 && strchr(argv[2], '?')) {
-                return Usage(cmd.Shortcut);
+    }
+    auto& handlers = CCommandHandler::m_Handlers;
+    for (UINT i = 0; i < handlers.GetCount(); ++i) {
+        auto h = handlers[i];
+        CString token = params[0];
+        if (!h->Token().CompareNoCase(token)) {
+            params.RemoveAt(0);
+            UINT paramSize = (UINT)params.GetCount();
+
+            if (Config().Help) {
+                return h->Usage();
+            } else if (h->MinParams() <= paramSize) {
+                return h->Run(params);
+            } else {
+                ERR("%s requires minimum of %d parameters", token.GetString(), h->MinParams());
+                return h->Usage();
             }
-            return cmd.Proc(argc - 2, argv + 2);
         }
     }
     return Usage();

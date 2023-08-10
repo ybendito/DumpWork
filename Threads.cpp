@@ -201,18 +201,16 @@ private:
     ULONG m_Loops = 1;
 };
 
-int CreateThreads(int argc, char** argv)
+static int CreateThreads(const char *Param)
 {
-    if (argc < 1)
-        return 1;
-    ULONG numThreads = atoi(argv[0]);
+    ULONG numThreads = atoi(Param);
 
     CThreadCollection t(numThreads);
 
     char line[256] = "";
     char* s = line;
     puts("Interactive mode:");
-    puts("i(nc),d(ec),t(read add),b(usy loop troggle)");
+    puts("i(nc),d(ec),t(read add),b(usy loop toggle)");
     do
     {
         s = fgets(line, sizeof(line), stdin);
@@ -244,3 +242,20 @@ int CreateThreads(int argc, char** argv)
     
     return 0;
 }
+
+class CThreadsHandler : public CCommandHandler
+{
+public:
+    CThreadsHandler() : CCommandHandler("load", "Load CPU by threads", 1) {}
+private:
+    int Run(const CStringArray& Parameters) override
+    {
+        return CreateThreads(Parameters[0]);
+    }
+    void Help(CStringArray& a) override
+    {
+        a.Add("<number of threads>");
+    }
+};
+
+static CThreadsHandler th;

@@ -6,7 +6,7 @@ struct tBinaryBuffer
     UCHAR len;
 };
 
-static bool ReadBuf(tBinaryBuffer& Buf, char* Text)
+static bool ReadBuf(tBinaryBuffer& Buf, const char* Text)
 {
     ULONG buf[sizeof(Buf.buf)] = {};
     int res = sscanf(Text, "%02X %02X %02X %02X %02X %02X %02X %02X",
@@ -51,7 +51,7 @@ static long File2Memory(FILE* File, UCHAR* Buffer, LONG Size)
     return res;
 }
 
-int PatchBin(int argc, char** argv)
+static int PatchBin(const char *BinFile, const char *Src, const char* Dest, const char* TargetChunk)
 {
     FILE* f = NULL;
     int res = 1;
@@ -61,21 +61,17 @@ int PatchBin(int argc, char** argv)
     ULONG nTargetChunk = 0;
     long size;
 
-    if (argc < 3) {
-        ERR("At least 3 parameters required");
-        return 1;
-    }
-    if (argc >= 4) {
-        nTargetChunk = atoi(argv[3]);
+    if (TargetChunk) {
+        nTargetChunk = atoi(TargetChunk);
         LOG("Target chunk %d", nTargetChunk);
     }
-    f = fopen(argv[0], "r+b");
+    f = fopen(BinFile, "r+b");
     if (!f) {
-        ERR("Cannot open %s", argv[0]);
+        ERR("Cannot open %s", BinFile);
         return 1;
     }
     tBinaryBuffer src = {}, dest = {};
-    if (!ReadBuf(src, argv[1]) || !ReadBuf(dest, argv[2]) || src.len != dest.len) {
+    if (!ReadBuf(src, Src) || !ReadBuf(dest, Dest) || src.len != dest.len) {
         goto done;
     }
     fseek(f, 0, SEEK_END);
@@ -131,3 +127,21 @@ done:
     }
     return res;
 }
+
+class CPatchHandler : public CCommandHandler
+{
+public:
+    CPatchHandler() : CCommandHandler("patch", "Patch binary", 3) {}
+private:
+    int Run(const CStringArray& Parameters) override
+    {
+        const char* target = (Parameters.GetCount() > 3) ? Parameters[3] : NULL;
+        return PatchBin(Parameters[0], Parameters[1], Parameters[2], target);
+    }
+    void Help(CStringArray& a) override
+    {
+        a.Add("<name> <pattern> <pattern> [target chunk]");
+    }
+};
+
+static CPatchHandler ph;
