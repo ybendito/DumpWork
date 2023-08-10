@@ -13,7 +13,7 @@ tCommandEntry Commands[] =
     { "cr", "Compare 2 runaways files", "<file1> <file2>", [](int argc, char** argv) -> int { return CompareRunaways(argc, argv, false); }},
     { "crd", "Compare all runaways files in a directory", "<directory>", [](int argc, char** argv) -> int { return CompareRunaways(argc, argv, true); }},
     { "load", "Load CPU by threads", "<num of threads>", CreateThreads },
-    { "perf", "Monitor perf counters", "<name> ... <name>", PerfCounter },
+    { "perf", "Monitor perf counters", "help for details", PerfCounter },
     { "patch", "Patch binary", "<name> <pattern> <pattern> [target chunk]", PatchBin },
     { "files", "File operations", "hold <filename>", FilesCmd },
 };
