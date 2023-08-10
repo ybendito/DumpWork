@@ -57,3 +57,4 @@ int CompareRunaways(int argc, char** argv, bool directory);
 int CreateThreads(int argc, char** argv);
 int PerfCounter(int argc, char** argv);
 int PatchBin(int argc, char** argv);
+int FilesCmd(int argc, char** argv);

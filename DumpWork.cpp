@@ -15,6 +15,7 @@ tCommandEntry Commands[] =
     { "load", "Load CPU by threads", "<num of threads>", CreateThreads },
     { "perf", "Monitor perf counters", "<name> ... <name>", PerfCounter },
     { "patch", "Patch binary", "<name> <pattern> <pattern> [target chunk]", PatchBin },
+    { "files", "File operations", "hold <filename>", FilesCmd },
 };
 
 static int Usage(LPCSTR ShortCut = NULL)

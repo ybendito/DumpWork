@@ -143,6 +143,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="DumpWork.cpp" />
+    <ClCompile Include="Files.cpp" />
     <ClCompile Include="PatchBin.cpp" />
     <ClCompile Include="PerfCounters.cpp" />
     <ClCompile Include="Runaway.cpp" />
