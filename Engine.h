@@ -60,6 +60,9 @@ public:
 struct tConfiguration
 {
     bool Help;
+    bool Wait;
+    bool Loop;
+    UINT Count;
     static tConfiguration m_ConfigurationForCfgOnly;
 };
 

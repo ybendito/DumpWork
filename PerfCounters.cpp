@@ -127,30 +127,46 @@ static void RunAction(const CStringArray& Params)
 
 static int PerfCounter(const CStringArray& Parameters)
 {
-    ULONG timeToSleep = 100;
+    ULONG timeToSleep = 1000;
     CPdhQuery q;
     long val = 0;
     long limit = -1;
+    UINT consecutive = 0;
+    UINT count = Config().Count;
+    if (count == 0) count = 1;
+
+
     if (!q.Add(Parameters[0])) {
         return 1;
     }
 
-    if (!q.PollQ()) {
-        return 1;
+    while (!q.PollQ()) {
+        if (!Config().Wait)
+            return 1;
+        Sleep(1000);
     }
     Sleep(timeToSleep);
     if (Parameters.GetCount() >= 2) {
         limit = atoi(Parameters[1]);
     }
     if (limit >= 0) {
-        LOG("Running till value < %d", limit);
+        LOG("Running until value >= %d (%d times)", limit, count);
     }
     puts("Hit Escape to stop...");
-    while (q.Poll(&val, 1) && !_kbhit() )
+    while (!_kbhit())
     {
-        if (limit >= 0 && val >= limit) {
-            RunAction(Parameters);
+        if (!q.Poll(&val, 1) && !Config().Loop)
             break;
+        if (limit >= 0 && val >= limit) {
+            consecutive++;
+            if (consecutive >= count) {
+                consecutive = 0;
+                RunAction(Parameters);
+                if (!Config().Loop)
+                    break;
+            }
+        } else {
+            consecutive = 0;
         }
         Sleep(timeToSleep);
     }
@@ -168,6 +184,9 @@ private:
     }
     void Help(CStringArray& a) override
     {
+        a.Add("[-wait] Wait until the counter is available");
+        a.Add("[-loop] Run in a loop");
+        a.Add("[-count:<value>] Number of consecutive measurements");
         a.Add("@1     Counter for monitoring");
         a.Add("       or executable name without extension");
         a.Add("@2     Limit to stop monitoring (decimal)");
