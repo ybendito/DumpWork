@@ -27,14 +27,16 @@ static int HoldFile(LPCSTR Name, LPCSTR Param)
 
 static int WriteTestFile(LPCSTR Name)
 {
-    ULONG count = 1024 * 1024 * Config().Count;
+    ULONGLONG countBytes = 1024L * 1024L * (ULONGLONG)Config().Count;
+    ULONGLONG countUnits = countBytes / sizeof(ULONGLONG);
+
     FILE* f = fopen(Name, "w+b");
     int err = 0;
     if (!f) {
         ERR("Error creating %s, error 0x%X", Name, errno);
         return 1;
     }
-    for (ULONG i = 0; i < count; ++i) {
+    for (ULONGLONG i = 0; i < countUnits; ++i) {
         if (fwrite(&i, 1, sizeof(i), f) != sizeof(i)) {
             err = errno;
             ERR("Error writing %s, error 0x%X", Name, err);
@@ -42,7 +44,7 @@ static int WriteTestFile(LPCSTR Name)
         }
     }
     if (!err) {
-        LOG("Written file %s of %d MB", Name, count / (1024 * 256));
+        LOG("Written file %s of %d MB", Name, (ULONG)(countBytes / (1024 * 1024)));
     }
     fclose(f);
     return err;
@@ -50,29 +52,27 @@ static int WriteTestFile(LPCSTR Name)
 
 static int VerifyTestFile(LPCSTR Name)
 {
-    ULONG data[1024];
-    ULONG count = ARRAYSIZE(data) * Config().Count;
+    ULONGLONG countBytes = 1024L * 1024L * (ULONGLONG)Config().Count;
+    ULONGLONG countUnits = countBytes / sizeof(ULONGLONG);
     FILE* f = fopen(Name, "r+b");
     int err = 0;
+    ULONG percentage = 0;
     if (!f) {
         ERR("Error opening %s, error 0x%X", Name, errno);
         return 1;
     }
-    for (ULONG i = 0; !err && i < count; ++i) {
-        if (fread(data, 1, sizeof(data), f) != sizeof(data)) {
+    for (ULONGLONG i = 0; !err && i < countUnits; ++i) {
+        ULONGLONG val;
+        if (fread(&val, 1, sizeof(&val), f) != sizeof(val)) {
             err = errno;
-            ERR("Error reading %s, block %d, error 0x%X", Name, i, err);
+            ERR("Error reading %s, offset 0x%I64X, error 0x%X", Name, i, err);
             break;
         }
-        for (ULONG j = 0; j < ARRAYSIZE(data); ++j) {
-            if (data[j] != (j + ARRAYSIZE(data) * i)) {
-                ERR("Error validating at %d:%d, read value %X", i, j, data[j]);
-                err = 1;
-                break;
-            }
+        ULONG curPercentage = ULONG((i * 100L) / countUnits);
+        if (curPercentage != percentage) {
+            percentage = curPercentage;
+            printf(".");
         }
-        if ((i + 1) % 256 == 0) printf("."); // 1M
-        if ((i + 1) % (256*64) == 0) printf("\n"); // 1M
     }
     LOG("");
     fclose(f);
@@ -99,8 +99,8 @@ private:
     void Help(CStringArray& a) override
     {
         a.Add("hold \t<filename> <r|w|rw>\tkeeps file open with r|w denial");
-        a.Add("write \t<filename> -count:size>\twrite file for further verify, size in 4MB units");
-        a.Add("verify\t<filename> -count:size>\tverify file, size in 4MB units");
+        a.Add("write \t<filename> -count:size>\twrite file for further verify, size in MBs");
+        a.Add("verify\t<filename> -count:size>\tverify file, size in MBs");
     }
 };
 
