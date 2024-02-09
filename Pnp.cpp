@@ -4,15 +4,6 @@
 #include <newdev.h>
 
 #pragma comment(lib, "setupapi.lib")
-#pragma comment(lib, "newdev.lib")
-
-extern "C" __declspec(dllimport) BOOL WINAPI InstallSelectedDriver(
-    HWND  hwndParent,
-    HDEVINFO  DeviceInfoSet,
-    LPCWSTR  Reserved,
-    BOOL  Backup,
-    PDWORD  pReboot
-);
 
 static void LogBoolResult(const char* Name, bool LogSuccess, BOOL& result)
 {
@@ -23,6 +14,17 @@ static void LogBoolResult(const char* Name, bool LogSuccess, BOOL& result)
         LOG("%s OK", Name);
     }
 }
+
+#if USE_NEWLIB
+// keeping this for the history
+#pragma comment(lib, "newdev.lib")
+extern "C" __declspec(dllimport) BOOL WINAPI InstallSelectedDriver(
+    HWND  hwndParent,
+    HDEVINFO  DeviceInfoSet,
+    LPCWSTR  Reserved,
+    BOOL  Backup,
+    PDWORD  pReboot
+);
 
 static BOOL DoInstallDriver(HDEVINFO hDevInfo, PSP_DEVINFO_DATA pDevData, PSP_DRVINFO_DATA_V2 pDrvData, PBOOL pReboot)
 {
@@ -38,6 +40,7 @@ static BOOL DoInstallDriver(HDEVINFO hDevInfo, PSP_DEVINFO_DATA pDevData, PSP_DR
     }
     return res;
 }
+#endif
 
 static void CStringAtoW(const CStringA& a, CStringW& w)
 {
@@ -102,7 +105,7 @@ public:
         }
         return s;
     }
-    void GetDrivers(CStringArray& Drivers) const
+    template<typename TFunctor> void EnumerateDrivers(TFunctor Func) const
     {
         SP_DRVINFO_DATA_V2_W data;
         SP_DRVINFO_DETAIL_DATA_W detail;
@@ -118,82 +121,58 @@ public:
                 SetupDiGetDriverInfoDetailW(m_Devinfo, &m_Data, &data, &detail, sizeof(detail), &size);
                 if (size >= sizeof(detail)) {
                     CString s = DriverInfoToString(data.DriverDate, data.DriverVersion, detail.InfFileName);
-                    Drivers.Add(s);
+                    Func(s, data);
                     //LOG("Got SetupDiGetDriverInfoDetailW size %d", size);
-                } else {
+                }
+                else {
                     ERR("SetupDiGetDriverInfoDetailW size %d", size);
                 }
                 index++;
-            } else {
+            }
+            else {
                 break;
             }
         } while (true);
+    }
+    void GetDrivers(CStringArray& Drivers) const
+    {
+        EnumerateDrivers([&](CString& s, SP_DRVINFO_DATA_V2_W& data) {
+            Drivers.Add(s);
+        });
     }
     void SetSelected(const CString& Unique) const
     {
-        SP_DRVINFO_DATA_V2 data;
-        SP_DRVINFO_DETAIL_DATA detail;
-        ULONG index = 0;
-        data.cbSize = sizeof(data);
-        if (!SetupDiBuildDriverInfoList(m_Devinfo, &m_Data, SPDIT_COMPATDRIVER)) {
-            ERR("Error %d on SetupDiBuildDriverInfoList", GetLastError());
-        }
-        do {
-            if (SetupDiEnumDriverInfo(m_Devinfo, &m_Data, SPDIT_COMPATDRIVER, index, &data)) {
-                ULONG size = 0;
-                detail.cbSize = sizeof(detail);
-                SetupDiGetDriverInfoDetail(m_Devinfo, &m_Data, &data, &detail, sizeof(detail), &size);
-                if (size >= sizeof(detail)) {
-                    CStringW wInf;
-                    CString inf = detail.InfFileName;
-                    CStringAtoW(inf, wInf);
-                    CString s = DriverInfoToString(data.DriverDate, data.DriverVersion, wInf.GetBuffer());
-                    if (s.Find(Unique) >= 0) {
-                        BOOL res, rebootNeeded = false;
-                        res = SetupDiSetSelectedDevice(m_Devinfo, &m_Data);
-                        LogBoolResult("SetupDiSetSelectedDevice", true, res);
-                        res = SetupDiSetSelectedDriver(m_Devinfo, &m_Data, &data);
-                        LogBoolResult("SetupDiSetSelectedDriver", true, res);
-                        res = DoInstallDriver(m_Devinfo, &m_Data, &data, &rebootNeeded);
-                        if (res) {
-                            LOG("DiInstallDevice OK, reboot %s", rebootNeeded ? "REQUIRED" : "not needed");
-                        }
-                        return;
-                    }
-                }else {
-                    ERR("SetupDiGetDriverInfoDetailW size %d", size);
-                }
-                index++;
+        ULONG found = 0;
+        EnumerateDrivers([&](CString& s, SP_DRVINFO_DATA_V2_W& data) {
+            if (s.Find(Unique) >= 0) {
+                found++;
             }
             else {
-                break;
+                SP_DRVINSTALL_PARAMS params = {};
+                params.cbSize = sizeof(params);
+                params.Rank = 0xffffffff;
+                params.Flags = DNF_BAD_DRIVER;
+                BOOL res = SetupDiSetDriverInstallParamsW(m_Devinfo, &m_Data, &data, &params);
+                LogBoolResult("SetupDiSetDriverInstallParamsW", false, res);
             }
-        } while (true);
-    }
+        });
 
-    CString SelectedDriver() const
-    {
-        CString s;
-        SP_DRVINFO_DATA_V2_W data;
-        SP_DRVINFO_DETAIL_DATA_W detail;
-        data.cbSize = sizeof(data);
-        
-        if (SetupDiGetSelectedDriverW(m_Devinfo, &m_Data, &data)) {
-            ULONG size = 0;
-            detail.cbSize = sizeof(detail);
-            SetupDiGetDriverInfoDetailW(m_Devinfo, &m_Data, &data, &detail, sizeof(detail), &size);
-            if (size >= sizeof(detail)) {
-                s = DriverInfoToString(data.DriverDate, data.DriverVersion, detail.InfFileName);
-                //LOG("Got SetupDiGetDriverInfoDetailW size %d", size);
+        if (found == 1) {
+            BOOL reboot = false;
+            SP_DEVINSTALL_PARAMS params;
+            params.cbSize = sizeof(params);
+            BOOL res = SetupDiSelectBestCompatDrv(m_Devinfo, &m_Data);
+            LogBoolResult("SetupDiSelectBestCompatDrv", true, res);
+            res = SetupDiInstallDevice(m_Devinfo, &m_Data);
+            LogBoolResult("SetupDiInstallDevice", true, res);
+            if (res) {
+                res = SetupDiGetDeviceInstallParams(m_Devinfo, &m_Data, &params);
+                LogBoolResult("SetupDiGetDeviceInstallParams", false, res);
             }
-            else {
-                ERR("SetupDiGetDriverInfoDetailW size %d", size);
+            if (res && (params.Flags & (DI_NEEDREBOOT | DI_NEEDRESTART))) {
+                LOG("Reboot required");
             }
-        } else {
-            ERR("Error %X on SetupDiGetSelectedDriverW", GetLastError());
-            //ERROR_NO_DRIVER_SELECTED
         }
-        return s;
     }
     void Restart()
     {
