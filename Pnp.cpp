@@ -328,6 +328,12 @@ private:
         a.Add("enum <PnpID>\t\tenumerate devices and drivers");
         a.Add("install <PnpID> <driver-string>\t\tenumerate devices and drivers");
     }
+    CStringW GetDriverStoreLocation(const CStringW& InfName)
+    {
+        WCHAR buffer[MAX_PATH] = L"Unknown";
+        BOOL b = SetupGetInfDriverStoreLocationW(InfName, NULL, NULL, buffer, MAX_PATH, NULL);
+        return buffer;
+    }
 };
 
 void CPnpHandler::Enumerate(const CString& PnpId)
@@ -345,6 +351,8 @@ void CPnpHandler::Enumerate(const CString& PnpId)
         }
         CStringW infName = d.InfFile();
         LOG("\tinstalled: %S", infName.GetString());
+        CStringW location = GetDriverStoreLocation(infName);
+        LOG("\t\tat: %S", location.GetString());
     }
 }
 
