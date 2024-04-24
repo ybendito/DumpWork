@@ -143,7 +143,7 @@ private:
 class CTextParseHandler : public CCommandHandler
 {
 public:
-    CTextParseHandler() : CCommandHandler("parse-text", "parsing text based on patterns", 2) {}
+    CTextParseHandler() : CCommandHandler("parse-text", "\bparsing text based on patterns", 2) {}
 private:
     int Run(const CStringArray& Parameters) override
     {
@@ -152,7 +152,7 @@ private:
     }
     void Help(CStringArray& a) override
     {
-        a.Add("<inifile> <textfile>");
+        a.Add("<inifile> <textfile> (see Examples)");
     }
 };
 
