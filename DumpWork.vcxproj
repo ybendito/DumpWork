@@ -150,6 +150,7 @@
     <ClCompile Include="PerfCounters.cpp" />
     <ClCompile Include="Pnp.cpp" />
     <ClCompile Include="Runaway.cpp" />
+    <ClCompile Include="virtio.cpp" />
     <ClCompile Include="Threads.cpp" />
     <ClCompile Include="Time.cpp" />
   </ItemGroup>
