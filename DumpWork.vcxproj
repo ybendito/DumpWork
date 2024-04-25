@@ -145,11 +145,13 @@
   <ItemGroup>
     <ClCompile Include="DumpWork.cpp" />
     <ClCompile Include="Files.cpp" />
+    <ClCompile Include="kd.cpp" />
     <ClCompile Include="ParseText.cpp" />
     <ClCompile Include="PatchBin.cpp" />
     <ClCompile Include="PerfCounters.cpp" />
     <ClCompile Include="Pnp.cpp" />
     <ClCompile Include="Runaway.cpp" />
+    <ClCompile Include="utils.cpp" />
     <ClCompile Include="virtio.cpp" />
     <ClCompile Include="Threads.cpp" />
     <ClCompile Include="Time.cpp" />
@@ -157,6 +159,7 @@
   <ItemGroup>
     <ClInclude Include="Engine.h" />
     <ClInclude Include="stdafx.h" />
+    <ClInclude Include="utils.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
