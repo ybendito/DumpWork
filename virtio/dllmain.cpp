@@ -159,14 +159,37 @@ public:
 // example
 // Adapter context
 // ffffb904303f3000
-        bool bContext = false;
+        bool bFound = false;
         for (int i = 0; i < m_Output.GetCount(); ++i) {
             if (0 == m_Output[i].Compare("Adapter context")) {
-                bContext = true;
-            } else if (bContext) {
+                bFound = true;
+            } else if (bFound) {
                 char* endptr;
                 Context = strtoull(m_Output[i], &endptr, 16);
                 break;
+            }
+        }
+    }
+    void Process(CString& Version)
+    {
+        // example
+        // Adapter context
+        // ffffb904303f3000
+        int Found = 0;
+        for (int i = 0; i < m_Output.GetCount(); ++i) {
+            switch (Found) {
+                case 0:
+                    Found = m_Output[i].Compare("Driver") == 0;
+                    break;
+                case 1:
+                    Found = 2;
+                    break;
+                case 2:
+                    Found = -1;
+                    Version = m_Output[i];
+                    break;
+                default:
+                    return;
             }
         }
     }
@@ -212,15 +235,17 @@ public:
             return;
         for (int i = 0; i < adapters.GetCount(); ++i) {
             ULONGLONG context = 0;
+            CString version = "Unknown";
             m_Control->Output(DEBUG_OUTPUT_NORMAL, "#%d: adapter %I64X", i, (ULONGLONG)adapters[i]);
             {
                 CGetAdapterContext cmd(m_Client, m_Control, (ULONGLONG)adapters[i]);
                 cmd.Run();
                 cmd.Process(context);
+                cmd.Process(version);
             }
             adapters.ElementAt(i) = (PVOID)context;
             if (context) {
-                m_Control->Output(DEBUG_OUTPUT_NORMAL, ", context %I64X\n", (ULONGLONG)adapters[i]);
+                m_Control->Output(DEBUG_OUTPUT_NORMAL, ", context %I64X, version %s\n", (ULONGLONG)adapters[i], version.GetString());
             } else {
                 m_Control->Output(DEBUG_OUTPUT_NORMAL, ", context unknown\n");
             }
