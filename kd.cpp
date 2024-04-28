@@ -17,6 +17,18 @@ private:
     }
 };
 
+static CString DirectoryOf(LPCSTR FileName)
+{
+    CString s = FileName;
+    int n = s.ReverseFind('\\');
+    if (n >= 0) {
+        s.SetAt(n, 0);
+    } else {
+        s = ".";
+    }
+    return s;
+}
+
 int CKd::Run(const CStringArray& Parameters)
 {
     SetConsoleCtrlHandler(HandlerRoutine, true);
@@ -26,6 +38,11 @@ int CKd::Run(const CStringArray& Parameters)
     cmd.Format("\"%s\"", prog.GetString());
     // add dump file and output file
     cmd.AppendFormat(" -z \"%s\" -logo \"%s.kd.log\"", Parameters[0].GetString(), Parameters[0].GetString());
+    const char* env_var = "_NT_SYMBOL_PATH";
+    // env_var = "_NT_ALT_SYMBOL_PATH"; //this would do the same
+    CString sValue = "srv*;";
+    sValue += DirectoryOf(Parameters[0]);
+    SetEnvironmentVariable(env_var, sValue);
     CProcessRunner r(false);
     r.RunProcess(cmd);
     //LOG("Done %s", cmd.GetString());
