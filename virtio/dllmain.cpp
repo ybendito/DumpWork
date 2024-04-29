@@ -6,12 +6,6 @@
 WINDBG_EXTENSION_APIS ExtensionApis;
 bool bVerbose;
 
-typedef struct _tagSymbolsData
-{
-    __time32_t  timestamp;
-    GUID        guid;
-} tSymbolsData;
-
 extern "C" __declspec(dllexport) HRESULT verbose(IN PDEBUG_CLIENT Client, IN PCSTR Args)
 {
     CComPtr<IDebugClient> client = Client;
@@ -437,8 +431,7 @@ public:
         }
         // first round
         SYM_TYPE type = NumSymTypes;
-        tSymbolsData data = {};
-        GetSymbolsState(index, Name, type, &data);
+        GetSymbolsState(index, Name, type, true);
 
         if (type == SymDeferred) {
             m_Control->Output(DEBUG_OUTPUT_NORMAL, "Trying to load symbols ... \n");
@@ -450,7 +443,7 @@ public:
             m_Control->Output(DEBUG_OUTPUT_NORMAL, "Trying to locate symbols ... \n");
 
             CStringArray additionalDirs;
-            FindPdb(Name, data.guid, additionalDirs);
+            FindPdb(Name, additionalDirs);
 
             AppendSymbolPath(additionalDirs);
 
@@ -482,7 +475,7 @@ public:
         }
     }
 
-    void GetSymbolsState(IN ULONG Index, IN LPCSTR ModuleName, OUT SYM_TYPE& SymbolsType, OUT tSymbolsData *PdbData = NULL)
+    void GetSymbolsState(IN ULONG Index, IN LPCSTR ModuleName, OUT SYM_TYPE& SymbolsType, bool MoreOutput = false)
     {
         DEBUG_MODULE_PARAMETERS params;
         LPCSTR name = ModuleName;
@@ -493,7 +486,7 @@ public:
         }
 
         SymbolsType = (SYM_TYPE)params.SymbolType;
-        if (PdbData) {
+        if (MoreOutput) {
             //
             CString timestamp = TimeStampToString(params.TimeDateStamp);
             m_Control->Output(DEBUG_OUTPUT_NORMAL, "%s: %s\n", name, timestamp.GetString());
@@ -520,12 +513,12 @@ public:
             break;
         }
 
-        if (params.SymbolType != DEBUG_SYMTYPE_PDB && PdbData)
+        if (params.SymbolType != DEBUG_SYMTYPE_PDB && MoreOutput)
         {
-            PdbData->timestamp = params.TimeDateStamp;
             CGetLmiData cmd(m_Client, m_Control, name);
             cmd.Run();
-            if (!cmd.Process(PdbData->guid)) {
+            GUID guid = {};
+            if (!cmd.Process(guid)) {
                 ERR("Can't retrieve GUID from output!");
             }
         }
@@ -588,7 +581,7 @@ public:
         }
     }
 
-    void FindPdb(LPCSTR Name, const GUID& Guid, CStringArray& Dirs)
+    void FindPdb(LPCSTR Name, CStringArray& Dirs)
     {
         CStringArray dirs;
         GetExternalSymbolDirectories(dirs);
