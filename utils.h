@@ -162,6 +162,10 @@ public:
             m_Redirect = false;
         }
     }
+    void SetIntermediateWait(ULONG Millies)
+    {
+        m_IntermediateWait = Millies;
+    }
     void Terminate()
     {
         if (pi.hProcess)
@@ -190,12 +194,18 @@ public:
                 m_StdErr.CloseWrite();
             }
             ResumeThread(pi.hThread);
-            LOG(" Running %s succeded", CommandLine.GetString());
-            while (m_WaitTime && WaitForSingleObject(pi.hProcess, m_WaitTime) == WAIT_TIMEOUT)
+            LOG(" Running %s succeded, pid %d(%X)", CommandLine.GetString(), pi.dwProcessId, pi.dwProcessId);
+            if (!m_IntermediateWait || m_IntermediateWait > m_WaitTime) {
+                m_IntermediateWait = m_WaitTime;
+            }
+            while (m_WaitTime && WaitForSingleObject(pi.hProcess, m_IntermediateWait) == WAIT_TIMEOUT)
             {
-                if (ShouldTerminate())
-                {
+                m_CumulativeWait += m_IntermediateWait;
+                if (ShouldTerminate(m_CumulativeWait, m_WaitTime)) {
                     Terminate();
+                } else {
+                    LOG(" pid %d(%X) is running %d ms", pi.dwProcessId, pi.dwProcessId, m_CumulativeWait);
+                    Flush();
                 }
             }
             Flush();
@@ -230,10 +240,12 @@ protected:
         memset(&pi, 0, sizeof(pi));
     }
     ULONG m_WaitTime;
+    ULONG m_IntermediateWait = 0;
+    ULONG m_CumulativeWait = 0;
     bool  m_Redirect;
-    virtual bool ShouldTerminate()
+    virtual bool ShouldTerminate(ULONG CumulativeWait, ULONG WaitLimit)
     {
-        return false;
+        return CumulativeWait >= WaitLimit;
     }
     virtual void PostProcess(ULONG ExitCode)
     {
