@@ -23,3 +23,5 @@ extern bool bVerbose;
 #define VERBOSE(fmt, ...) { if (bVerbose) LOG(fmt, __VA_ARGS__); }
 
 #define ELEMENTS_IN(x) sizeof(x)/sizeof(x[0])
+
+#include "..\utils.h"

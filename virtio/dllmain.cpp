@@ -6,6 +6,12 @@
 WINDBG_EXTENSION_APIS ExtensionApis;
 bool bVerbose;
 
+typedef struct _tagSymbolsData
+{
+    __time32_t  timestamp;
+    GUID        guid;
+} tSymbolsData;
+
 extern "C" __declspec(dllexport) HRESULT verbose(IN PDEBUG_CLIENT Client, IN PCSTR Args)
 {
     CComPtr<IDebugClient> client = Client;
@@ -123,9 +129,15 @@ protected:
     }
 protected:
     CStringArray m_Output;
+    PDEBUG_CLIENT m_Client;
+    void CombineOutput(CString& Combined)
+    {
+        for (int i = 0; i < m_Output.GetCount(); ++i) {
+            Combined += m_Output[i];
+        }
+    }
 private:
     PDEBUG_OUTPUT_CALLBACKS m_Previous = NULL;
-    PDEBUG_CLIENT m_Client;
     STDMETHOD_(ULONG, AddRef)(THIS) override {
         return CUnknown::AddRef();
     }
@@ -246,6 +258,88 @@ public:
     }
 };
 
+class CCheckPdb : public CExternalCommandParser
+{
+public:
+    CCheckPdb(PDEBUG_CLIENT Client, PDEBUG_CONTROL Control, LPCSTR ModuleName, LPCSTR PdbName) :
+        CExternalCommandParser(Client, Control, MakeCommand(ModuleName, PdbName))
+    {}
+    bool Parse()
+    {
+        bool match = false;
+        CString s;
+        CombineOutput(s);
+        int matchPos = s.Find("MATCH:");
+        int mismatchPos = s.Find("MISMATCH:");
+        return matchPos >= 0 && mismatchPos < 0;
+    }
+private:
+    CString MakeCommand(LPCSTR ModuleName, LPCSTR PdbName)
+    {
+        CString s;
+        s.Format("!chksym %s.sys %s", ModuleName, PdbName);
+        return s;
+    }
+};
+
+class CGetLmiData : CExternalCommandParser
+{
+public:
+    CGetLmiData(PDEBUG_CLIENT Client, PDEBUG_CONTROL Control, LPCSTR Name) :
+        CExternalCommandParser(Client, Control, MakeCommand(Name))
+    {
+        VERBOSE("%s: %s", __FUNCTION__, m_Command.GetString());
+    }
+    HRESULT Run() override
+    {
+        bool saveVerbose = bVerbose;
+        bVerbose = true;
+        HRESULT res = __super::Run();
+        bVerbose = saveVerbose;
+        return res;
+    }
+    bool Process(GUID& Guid)
+    {
+        // ...
+        // GUID: {C6F32534-15A4-415F-ACE1-5F7BFC1BD569}
+        // ...
+        int found = 0;
+        for (int i = 0; !found && i < m_Output.GetCount(); ++i) {
+            switch (found) {
+            case 0:
+                found = m_Output[i].Find("GUID: ");
+                if (found >= 0) {
+                    CString s = m_Output[i];
+                    //LOG("1: string of %d", s.GetLength());
+                    s.Delete(0, found + 6);
+                    //LOG("2: string of %d", s.GetLength());
+                    found = s.Find('}');
+                    if (found >= 0) {
+                        s.Delete(found + 1, s.GetLength() - found - 1);
+                        //LOG("Breaking from processing, found=%d, last string of %d", found, s.GetLength());
+                        //return false;
+                        CStringW ws = StringAToW(s);
+                        return IIDFromString(ws, &Guid) == S_OK;
+                    }
+                    return false;
+                }
+                found = 0;
+                break;
+            default:
+                return false;
+            }
+        }
+        return false;
+    }
+private:
+    static CString MakeCommand(LPCSTR Name)
+    {
+        CString s;
+        s.Format("!lmi %s.sys", Name);
+        return s;
+    }
+};
+
 class CDebugExtension
 {
 public:
@@ -272,8 +366,9 @@ public:
     }
     void help()
     {
+        m_Control->Output(DEBUG_OUTPUT_NORMAL, "mp - find miniport and symbols in known places\n");
+        m_Control->Output(DEBUG_OUTPUT_NORMAL, "findpdb <directory> - recursive find and append to symbol path\n");
         verbose(m_Client, "--help");
-        m_Control->Output(DEBUG_OUTPUT_NORMAL, "mp\n");
     }
     void mp()
     {
@@ -305,23 +400,106 @@ public:
         }
         CheckSymbols("netkvm");
     }
-    void CheckSymbols(LPCSTR name)
+
+    void findpdb(LPCSTR TopDir)
+    {
+        CStringArray dirs;
+        dirs.Add(TopDir);
+        CStringArray found;
+
+        FindPdbInDirectories("netkvm", found, dirs);
+
+        if (found.GetCount() == 0) {
+            m_Control->Output(DEBUG_OUTPUT_NORMAL, "No compatible PDB found\n");
+            return;
+        }
+        for (int i = 0; i < found.GetCount(); ++i) {
+            m_Control->Output(DEBUG_OUTPUT_NORMAL, "  %s\n", found[i].GetString());
+        }
+        AppendSymbolPath(found);
+    }
+
+    void TriggerSymbolLoading(LPCSTR ModuleName)
+    {
+        CString command;
+        command.Format("x %s!_any_symbol_just_to_trigger_pdb_loading", ModuleName);
+        CExternalCommandParser cmd(m_Client, m_Control, command);
+        cmd.Run();
+    }
+
+    void CheckSymbols(LPCSTR Name)
     {
         ULONG index;
-        DEBUG_MODULE_PARAMETERS params;
-        m_Result = m_Symbols->GetModuleByModuleName(name, 0, &index, NULL);
+        m_Result = m_Symbols->GetModuleByModuleName(Name, 0, &index, NULL);
         if (m_Result != S_OK) {
-            m_Control->Output(DEBUG_OUTPUT_NORMAL, "module %s is not loaded\n", name);
+            m_Control->Output(DEBUG_OUTPUT_NORMAL, "module %s is not loaded\n", Name);
+            return;
+        }
+        // first round
+        SYM_TYPE type = NumSymTypes;
+        tSymbolsData data = {};
+        GetSymbolsState(index, Name, type, &data);
+
+        if (type == SymDeferred) {
+            m_Control->Output(DEBUG_OUTPUT_NORMAL, "Trying to load symbols ... \n");
+            TriggerSymbolLoading(Name);
+            GetSymbolsState(index, Name, type);
+        }
+
+        if (type != SymPdb) {
+            m_Control->Output(DEBUG_OUTPUT_NORMAL, "Trying to locate symbols ... \n");
+
+            CStringArray additionalDirs;
+            FindPdb(Name, data.guid, additionalDirs);
+
+            AppendSymbolPath(additionalDirs);
+
+            if (additionalDirs.GetCount()) {
+                GetSymbolsState(index, Name, type);
+                if (type == SymDeferred) {
+                    m_Control->Output(DEBUG_OUTPUT_NORMAL, "Trying to load symbols ... \n");
+                    TriggerSymbolLoading(Name);
+                    GetSymbolsState(index, Name, type);
+                }
+            }
+        }
+    }
+
+    void QueryModuleVersion(ULONG Index)
+    {
+        if (!m_Symbols3)
+            return;
+        VS_FIXEDFILEINFO info;
+        m_Result = m_Symbols3->GetModuleVersionInformation(Index, 0, "\\",
+            &info, sizeof(info), NULL);
+        if (m_Result == S_OK) {
+            m_Control->Output(DEBUG_OUTPUT_NORMAL, "Driver version: %d.%d.%d.%d\n",
+                HIWORD(info.dwFileVersionMS), LOWORD(info.dwFileVersionMS),
+                HIWORD(info.dwFileVersionLS), LOWORD(info.dwFileVersionLS));
+        }
+        else {
+            LOG("GetModuleVersionInformation, result %X", m_Result);
+        }
+    }
+
+    void GetSymbolsState(IN ULONG Index, IN LPCSTR ModuleName, OUT SYM_TYPE& SymbolsType, OUT tSymbolsData *PdbData = NULL)
+    {
+        DEBUG_MODULE_PARAMETERS params;
+        LPCSTR name = ModuleName;
+        m_Result = m_Symbols->GetModuleParameters(1, NULL, Index, &params);
+        if (m_Result != S_OK) {
+            ERR("GetModuleParameters failed for %s, error %X", name, m_Result);
             return;
         }
 
-        m_Result = m_Symbols->GetModuleParameters(1, NULL, index, &params);
-        if (m_Result != S_OK) {
-            LOG("GetModuleParameters failed for %s, error %X\n", name, m_Result);
-            return;
+        SymbolsType = (SYM_TYPE)params.SymbolType;
+        if (PdbData) {
+            //
+            CString timestamp = TimeStampToString(params.TimeDateStamp);
+            m_Control->Output(DEBUG_OUTPUT_NORMAL, "%s: %s\n", name, timestamp.GetString());
+            QueryModuleVersion(Index);
         }
-        CString timestamp = TimeStampToString(params.TimeDateStamp);
-        m_Control->Output(DEBUG_OUTPUT_NORMAL, "%s: %s\n", name, timestamp.GetString());
+
         m_Control->Output(DEBUG_OUTPUT_NORMAL, "Symbols type: %s", Name<eDEBUG_SYMTYPE>(params.SymbolType));
         if (params.Flags) {
             m_Control->Output(DEBUG_OUTPUT_NORMAL, ", flags:(%d=%s)", params.Flags, Flags<eDEBUG_MODULE>(params.Flags).GetString());
@@ -329,29 +507,115 @@ public:
         m_Control->Output(DEBUG_OUTPUT_NORMAL, "\n");
         switch (params.SymbolType)
         {
-            case DEBUG_SYMTYPE_DEFERRED:
-                // nothing loaded and not tried
-                break;
-            case DEBUG_SYMTYPE_NONE:
-                // tried and not found
-                break;
-            case DEBUG_SYMTYPE_PDB:
-                // loaded
-                break;
-            default:
-                break;
+        case DEBUG_SYMTYPE_DEFERRED:
+            // nothing loaded and not tried yet
+            break;
+        case DEBUG_SYMTYPE_NONE:
+            // tried and not found
+            break;
+        case DEBUG_SYMTYPE_PDB:
+            // loaded
+            break;
+        default:
+            break;
         }
+
+        if (params.SymbolType != DEBUG_SYMTYPE_PDB && PdbData)
+        {
+            PdbData->timestamp = params.TimeDateStamp;
+            CGetLmiData cmd(m_Client, m_Control, name);
+            cmd.Run();
+            if (!cmd.Process(PdbData->guid)) {
+                ERR("Can't retrieve GUID from output!");
+            }
+        }
+
         if (params.SymbolType == DEBUG_SYMTYPE_PDB && m_Symbols3) {
             LOG("Getting symbol file name of %d\n", params.SymbolFileNameSize);
             CString symbolFileName;
             LPSTR buffer = symbolFileName.GetBufferSetLength(params.SymbolFileNameSize + 2);
-            m_Result = m_Symbols3->GetModuleNameString(DEBUG_MODNAME_SYMBOL_FILE, index, 0, buffer, params.SymbolFileNameSize, NULL);
+            m_Result = m_Symbols3->GetModuleNameString(DEBUG_MODNAME_SYMBOL_FILE, Index, 0, buffer, params.SymbolFileNameSize, NULL);
             if (m_Result == S_OK) {
                 m_Control->Output(DEBUG_OUTPUT_NORMAL, "Symbol file: %s\n", symbolFileName.GetString());
             } else {
                 LOG("GetModuleNameString failed for %s, error %X\n", name, m_Result);
             }
         }
+    }
+
+    bool CheckPdb(LPCSTR Module, LPCSTR PdbFile)
+    {
+        CCheckPdb cmd(m_Client, m_Control, Module, PdbFile);
+        cmd.Run();
+        return cmd.Parse();
+    }
+
+    void AppendSymbolPath(const CStringArray& Dirs)
+    {
+        for (UINT i = 0; i < Dirs.GetCount(); ++i) {
+            m_Control->Output(DEBUG_OUTPUT_NORMAL, "Appending %s\n", Dirs[i].GetString());
+            m_Symbols->AppendSymbolPath(Dirs[i]);
+        }
+
+        if (Dirs.GetCount()) {
+            CExternalCommandParser cmd(m_Client, m_Control, ".reload");
+            cmd.Run();
+        }
+    }
+    void FindPdbInDirectories(IN LPCSTR Name, OUT CStringArray& Dirs, IN const CStringArray& Where)
+    {
+        const CStringArray& dirs = Where;
+        for (UINT i = 0; i < dirs.GetCount(); ++i) {
+            LOG("Checking %s", dirs.GetAt(i).GetString());
+            CProcessRunner r(true);
+            CString cmdLine;
+            cmdLine.Format("cmd.exe /c dir /s /b %s\\%s.pdb", dirs.GetAt(i).GetString(), Name);
+            r.SetIntermediateWait(3000);
+            r.RunProcess(cmdLine);
+            int n = 0;
+            do {
+                CString next = r.StdOutResult().Tokenize("\r\n", n);
+                next.Trim();
+                if (next.IsEmpty())
+                    break;
+                bool bCompat = CheckPdb(Name, next);
+                LOG("Found %s %s", next.GetString(), bCompat ? "GOOD" : "BAD");
+                if (bCompat) {
+                    Dirs.Add(DirectoryOf(next));
+                    break;
+                }
+            } while (true);
+        }
+    }
+
+    void FindPdb(LPCSTR Name, const GUID& Guid, CStringArray& Dirs)
+    {
+        CStringArray dirs;
+        GetExternalSymbolDirectories(dirs);
+        FindPdbInDirectories(Name, Dirs, dirs);
+    }
+    void GetExternalSymbolDirectories(CStringArray& Dirs)
+    {
+        CString symPath;
+        int n = 2048;
+        ULONG got = 0;
+        m_Symbols->GetSymbolPath(symPath.GetBufferSetLength(n), n, &got);
+        if (!got)
+            return;
+        symPath.SetAt(got, 0);
+        LOG("SymPath=%s(len %d)\n", symPath.GetString(), got);
+        n = 0;
+        CString next;
+        do {
+            next = symPath.Tokenize(";", n);
+            LOG("SubPath %s (pos => %d)", next.GetString(), n);
+            if (next.Find('*') >= 0)
+                continue;
+            if (next.IsEmpty())
+                break;
+            Dirs.Add(next);
+        } while (true);
+        Dirs.Add(".");
     }
     void TestCommand(LPCSTR Command)
     {
@@ -364,8 +628,17 @@ protected:
     CComPtr<IDebugSymbols> m_Symbols;
     CComPtr<IDebugSymbols3> m_Symbols3;
     HRESULT m_Result;
+    void WaitForDebugger()
+    {
+        m_Control->Output(DEBUG_OUTPUT_NORMAL, "Connect debugger NOW\n");
+        while (!IsDebuggerPresent()) {
+            Sleep(1000);
+        }
+        Sleep(10000);
+        DebugBreak();
+    }
 private:
-    CString TimeStampToString(ULONG TimeDateStamp)
+    static CString TimeStampToString(ULONG TimeDateStamp)
     {
         CString s;
         char buffer[256];
@@ -379,6 +652,21 @@ private:
         s += buffer;
 
         return s;
+    }
+    static bool FileTimeMatch(const FILETIME& FileTime, __time32_t TimeStamp)
+    {
+        SYSTEMTIME st;
+        FileTimeToSystemTime(&FileTime, &st);
+        tm* timer = _gmtime32(&TimeStamp);
+        bool match = (timer->tm_hour == st.wHour && timer->tm_min == st.wMinute &&
+            timer->tm_sec == st.wSecond && timer->tm_mday == st.wDay &&
+            (timer->tm_mon + 1) == st.wMonth && (timer->tm_year + 1900) == st.wYear);
+
+        LOG("ft:%d-%d-%d-%d-%d-%d", st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
+        LOG("ts:%d-%d-%d-%d-%d-%d", timer->tm_year, timer->tm_mon, timer->tm_mday, timer->tm_hour, timer->tm_min, timer->tm_sec);
+        LOG("match - %d", match);
+
+        return match;
     }
 };
 
@@ -431,6 +719,15 @@ extern "C" __declspec(dllexport) HRESULT test(IN PDEBUG_CLIENT Client, IN PCSTR 
     VERBOSE("%s: =>", __FUNCTION__);
     CDebugExtension e(Client);
     e.TestCommand(Args);
+    VERBOSE("%s: <=", __FUNCTION__);
+    return S_OK;
+}
+
+extern "C" __declspec(dllexport) HRESULT findpdb(IN PDEBUG_CLIENT Client, IN PCSTR Args)
+{
+    VERBOSE("%s: =>", __FUNCTION__);
+    CDebugExtension e(Client);
+    e.findpdb(Args);
     VERBOSE("%s: <=", __FUNCTION__);
     return S_OK;
 }
