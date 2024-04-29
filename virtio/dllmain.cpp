@@ -337,9 +337,39 @@ private:
 class CDebugExtension
 {
 public:
-    CDebugExtension(PDEBUG_CLIENT Client)
+    virtual ~CDebugExtension()
     {
         LOG("%s", __FUNCTION__);
+    }
+    void TestCommand(LPCSTR Command)
+    {
+        CTestCommand cmd(m_Client, m_Control, Command);
+        cmd.Run();
+    }
+
+    void findpdb(LPCSTR TopDir)
+    {
+        CStringArray dirs;
+        dirs.Add(TopDir);
+        CStringArray found;
+
+        FindPdbInDirectories(m_Module, found, dirs);
+
+        if (found.GetCount() == 0) {
+            Output("No compatible PDB found\n");
+            return;
+        }
+        for (int i = 0; i < found.GetCount(); ++i) {
+            Output("  %s\n", found[i].GetString());
+        }
+        AppendSymbolPath(found);
+    }
+
+protected:
+    CDebugExtension(PDEBUG_CLIENT Client, LPCSTR Module)
+    {
+        LOG("%s %s", __FUNCTION__, Module);
+        m_Module = Module;
         m_Client = Client;
         m_Result = m_Client.QueryInterface<IDebugControl>(&m_Control);
         if (m_Result != S_OK) {
@@ -354,63 +384,10 @@ public:
         // optional, do not fail if not present
         m_Result = m_Client.QueryInterface<IDebugSymbols3>(&m_Symbols3);
     }
-    ~CDebugExtension()
-    {
-        LOG("%s", __FUNCTION__);
-    }
     void help()
     {
-        Output("mp - find miniport and symbols in known places\n");
         Output("findpdb <directory> - recursive find and append to symbol path\n");
         verbose(m_Client, "--help");
-    }
-    void mp()
-    {
-        CPtrArray adapters;
-        CString version = "Unknown";
-        {
-            CGetVirtioAdapters cmd(m_Client, m_Control);
-            cmd.Run();
-            cmd.Process(adapters);
-        }
-        Output("%d virtio network adapters\n", (int)adapters.GetCount());
-        if (!adapters.GetCount())
-            return;
-        for (int i = 0; i < adapters.GetCount(); ++i) {
-            ULONGLONG context = 0;
-            Output("#%d: adapter %I64X", i, (ULONGLONG)adapters[i]);
-            {
-                CGetAdapterContext cmd(m_Client, m_Control, (ULONGLONG)adapters[i]);
-                cmd.Run();
-                cmd.Process(context);
-                cmd.Process(version);
-            }
-            adapters.ElementAt(i) = (PVOID)context;
-            if (context) {
-                Output(", context %I64X, version %s\n", (ULONGLONG)adapters[i], version.GetString());
-            } else {
-                Output(", context unknown\n");
-            }
-        }
-        CheckSymbols("netkvm");
-    }
-
-    void findpdb(LPCSTR TopDir)
-    {
-        CStringArray dirs;
-        dirs.Add(TopDir);
-        CStringArray found;
-
-        FindPdbInDirectories("netkvm", found, dirs);
-
-        if (found.GetCount() == 0) {
-            Output("No compatible PDB found\n");
-            return;
-        }
-        for (int i = 0; i < found.GetCount(); ++i) {
-            Output("  %s\n", found[i].GetString());
-        }
-        AppendSymbolPath(found);
     }
 
     void TriggerSymbolLoading(LPCSTR ModuleName)
@@ -419,6 +396,11 @@ public:
         command.Format("x %s!_any_symbol_just_to_trigger_pdb_loading", ModuleName);
         CExternalCommandParser cmd(m_Client, m_Control, command);
         cmd.Run();
+    }
+
+    void CheckSymbols()
+    {
+        CheckSymbols(m_Module);
     }
 
     void CheckSymbols(LPCSTR Name)
@@ -610,11 +592,6 @@ public:
         } while (true);
         Dirs.Add(".");
     }
-    void TestCommand(LPCSTR Command)
-    {
-        CTestCommand cmd(m_Client, m_Control, Command);
-        cmd.Run();
-    }
     void Output(LPCSTR Format, ...)
     {
         va_list list;
@@ -628,6 +605,7 @@ protected:
     CComPtr<IDebugSymbols> m_Symbols;
     CComPtr<IDebugSymbols3> m_Symbols3;
     HRESULT m_Result;
+    CString m_Module;
     void WaitForDebugger()
     {
         Output("Connect debugger NOW!\n");
@@ -696,10 +674,52 @@ extern "C" __declspec(dllexport) HRESULT CALLBACK DebugExtensionInitialize(
     return S_OK;
 }
 
+class CDebugExtensionNet : public CDebugExtension
+{
+public:
+    CDebugExtensionNet(PDEBUG_CLIENT Client) : CDebugExtension(Client, "netkvm") {}
+    void mp()
+    {
+        CPtrArray adapters;
+        CString version = "Unknown";
+        {
+            CGetVirtioAdapters cmd(m_Client, m_Control);
+            cmd.Run();
+            cmd.Process(adapters);
+        }
+        Output("%d virtio network adapters\n", (int)adapters.GetCount());
+        if (!adapters.GetCount())
+            return;
+        for (int i = 0; i < adapters.GetCount(); ++i) {
+            ULONGLONG context = 0;
+            Output("#%d: adapter %I64X", i, (ULONGLONG)adapters[i]);
+            {
+                CGetAdapterContext cmd(m_Client, m_Control, (ULONGLONG)adapters[i]);
+                cmd.Run();
+                cmd.Process(context);
+                cmd.Process(version);
+            }
+            adapters.ElementAt(i) = (PVOID)context;
+            if (context) {
+                Output(", context %I64X, version %s\n", (ULONGLONG)adapters[i], version.GetString());
+            }
+            else {
+                Output(", context unknown\n");
+            }
+        }
+        CheckSymbols();
+    }
+    void help()
+    {
+        Output("mp - find miniport and symbols in known places\n");
+        __super::help();
+    }
+};
+
 extern "C" __declspec(dllexport) HRESULT help(IN PDEBUG_CLIENT Client, IN PCSTR Args)
 {
     VERBOSE("%s: =>", __FUNCTION__);
-    CDebugExtension e(Client);
+    CDebugExtensionNet e(Client);
     e.help();
     VERBOSE("%s: <=", __FUNCTION__);
     return S_OK;
@@ -708,7 +728,7 @@ extern "C" __declspec(dllexport) HRESULT help(IN PDEBUG_CLIENT Client, IN PCSTR 
 extern "C" __declspec(dllexport) HRESULT mp(IN PDEBUG_CLIENT Client, IN PCSTR Args)
 {
     VERBOSE("%s: =>", __FUNCTION__);
-    CDebugExtension e(Client);
+    CDebugExtensionNet e(Client);
     e.mp();
     VERBOSE("%s: <=", __FUNCTION__);
     return S_OK;
@@ -717,7 +737,7 @@ extern "C" __declspec(dllexport) HRESULT mp(IN PDEBUG_CLIENT Client, IN PCSTR Ar
 extern "C" __declspec(dllexport) HRESULT test(IN PDEBUG_CLIENT Client, IN PCSTR Args)
 {
     VERBOSE("%s: =>", __FUNCTION__);
-    CDebugExtension e(Client);
+    CDebugExtensionNet e(Client);
     e.TestCommand(Args);
     VERBOSE("%s: <=", __FUNCTION__);
     return S_OK;
@@ -726,7 +746,7 @@ extern "C" __declspec(dllexport) HRESULT test(IN PDEBUG_CLIENT Client, IN PCSTR 
 extern "C" __declspec(dllexport) HRESULT findpdb(IN PDEBUG_CLIENT Client, IN PCSTR Args)
 {
     VERBOSE("%s: =>", __FUNCTION__);
-    CDebugExtension e(Client);
+    CDebugExtensionNet e(Client);
     e.findpdb(Args);
     VERBOSE("%s: <=", __FUNCTION__);
     return S_OK;
