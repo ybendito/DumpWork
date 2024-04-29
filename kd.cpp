@@ -13,7 +13,7 @@ private:
     int Run(const CStringArray& Parameters) override;
     void Help(CStringArray& a) override
     {
-        a.Add("<dump file>");
+        a.Add("[-gui] <dump file>");
     }
 };
 
@@ -33,7 +33,9 @@ int CKd::Run(const CStringArray& Parameters)
 {
     SetConsoleCtrlHandler(HandlerRoutine, true);
 
-    CString prog = "c:\\Program Files (x86)\\Windows Kits\\10\\Debuggers\\x64\\kd.exe";
+    CString dir = "c:\\Program Files (x86)\\Windows Kits\\10\\Debuggers\\x64\\";
+    CString exe = Config().Gui ? "windbg.exe" : "kd.exe";
+    CString prog = dir + exe;
     CString cmd;
     cmd.Format("\"%s\"", prog.GetString());
     // add dump file and output file
