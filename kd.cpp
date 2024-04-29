@@ -17,18 +17,6 @@ private:
     }
 };
 
-static CString DirectoryOf(LPCSTR FileName)
-{
-    CString s = FileName;
-    int n = s.ReverseFind('\\');
-    if (n >= 0) {
-        s.SetAt(n, 0);
-    } else {
-        s = ".";
-    }
-    return s;
-}
-
 int CKd::Run(const CStringArray& Parameters)
 {
     SetConsoleCtrlHandler(HandlerRoutine, true);

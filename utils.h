@@ -291,3 +291,24 @@ protected:
         m_StdErrResult += Flush(m_StdErr.ReadHandle());
     }
 };
+
+static CString DirectoryOf(LPCSTR FileName)
+{
+    CString s = FileName;
+    int n = s.ReverseFind('\\');
+    if (n >= 0) {
+        s.SetAt(n, 0);
+    }
+    else {
+        s = ".";
+    }
+    return s;
+}
+
+static CStringW StringAToW(const CStringA& s)
+{
+    CStringW ws;
+    for (int i = 0; i < s.GetLength(); ++i)
+        ws += s[i];
+    return ws;
+}
