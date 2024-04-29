@@ -360,8 +360,8 @@ public:
     }
     void help()
     {
-        m_Control->Output(DEBUG_OUTPUT_NORMAL, "mp - find miniport and symbols in known places\n");
-        m_Control->Output(DEBUG_OUTPUT_NORMAL, "findpdb <directory> - recursive find and append to symbol path\n");
+        Output("mp - find miniport and symbols in known places\n");
+        Output("findpdb <directory> - recursive find and append to symbol path\n");
         verbose(m_Client, "--help");
     }
     void mp()
@@ -373,12 +373,12 @@ public:
             cmd.Run();
             cmd.Process(adapters);
         }
-        m_Control->Output(DEBUG_OUTPUT_NORMAL, "%d virtio network adapters\n", (int)adapters.GetCount());
+        Output("%d virtio network adapters\n", (int)adapters.GetCount());
         if (!adapters.GetCount())
             return;
         for (int i = 0; i < adapters.GetCount(); ++i) {
             ULONGLONG context = 0;
-            m_Control->Output(DEBUG_OUTPUT_NORMAL, "#%d: adapter %I64X", i, (ULONGLONG)adapters[i]);
+            Output("#%d: adapter %I64X", i, (ULONGLONG)adapters[i]);
             {
                 CGetAdapterContext cmd(m_Client, m_Control, (ULONGLONG)adapters[i]);
                 cmd.Run();
@@ -387,9 +387,9 @@ public:
             }
             adapters.ElementAt(i) = (PVOID)context;
             if (context) {
-                m_Control->Output(DEBUG_OUTPUT_NORMAL, ", context %I64X, version %s\n", (ULONGLONG)adapters[i], version.GetString());
+                Output(", context %I64X, version %s\n", (ULONGLONG)adapters[i], version.GetString());
             } else {
-                m_Control->Output(DEBUG_OUTPUT_NORMAL, ", context unknown\n");
+                Output(", context unknown\n");
             }
         }
         CheckSymbols("netkvm");
@@ -404,11 +404,11 @@ public:
         FindPdbInDirectories("netkvm", found, dirs);
 
         if (found.GetCount() == 0) {
-            m_Control->Output(DEBUG_OUTPUT_NORMAL, "No compatible PDB found\n");
+            Output("No compatible PDB found\n");
             return;
         }
         for (int i = 0; i < found.GetCount(); ++i) {
-            m_Control->Output(DEBUG_OUTPUT_NORMAL, "  %s\n", found[i].GetString());
+            Output("  %s\n", found[i].GetString());
         }
         AppendSymbolPath(found);
     }
@@ -426,7 +426,7 @@ public:
         ULONG index;
         m_Result = m_Symbols->GetModuleByModuleName(Name, 0, &index, NULL);
         if (m_Result != S_OK) {
-            m_Control->Output(DEBUG_OUTPUT_NORMAL, "module %s is not loaded\n", Name);
+            Output("module %s is not loaded\n", Name);
             return;
         }
         // first round
@@ -434,13 +434,13 @@ public:
         GetSymbolsState(index, Name, type, true);
 
         if (type == SymDeferred) {
-            m_Control->Output(DEBUG_OUTPUT_NORMAL, "Trying to load symbols ... \n");
+            Output("Trying to load symbols ... \n");
             TriggerSymbolLoading(Name);
             GetSymbolsState(index, Name, type);
         }
 
         if (type != SymPdb) {
-            m_Control->Output(DEBUG_OUTPUT_NORMAL, "Trying to locate symbols ... \n");
+            Output("Trying to locate symbols ... \n");
 
             CStringArray additionalDirs;
             FindPdb(Name, additionalDirs);
@@ -450,7 +450,7 @@ public:
             if (additionalDirs.GetCount()) {
                 GetSymbolsState(index, Name, type);
                 if (type == SymDeferred) {
-                    m_Control->Output(DEBUG_OUTPUT_NORMAL, "Trying to load symbols ... \n");
+                    Output("Trying to load symbols ... \n");
                     TriggerSymbolLoading(Name);
                     GetSymbolsState(index, Name, type);
                 }
@@ -466,7 +466,7 @@ public:
         m_Result = m_Symbols3->GetModuleVersionInformation(Index, 0, "\\",
             &info, sizeof(info), NULL);
         if (m_Result == S_OK) {
-            m_Control->Output(DEBUG_OUTPUT_NORMAL, "Driver version: %d.%d.%d.%d\n",
+            Output("Driver version: %d.%d.%d.%d\n",
                 HIWORD(info.dwFileVersionMS), LOWORD(info.dwFileVersionMS),
                 HIWORD(info.dwFileVersionLS), LOWORD(info.dwFileVersionLS));
         }
@@ -489,15 +489,15 @@ public:
         if (MoreOutput) {
             //
             CString timestamp = TimeStampToString(params.TimeDateStamp);
-            m_Control->Output(DEBUG_OUTPUT_NORMAL, "%s: %s\n", name, timestamp.GetString());
+            Output("%s: %s\n", name, timestamp.GetString());
             QueryModuleVersion(Index);
         }
 
-        m_Control->Output(DEBUG_OUTPUT_NORMAL, "Symbols type: %s", Name<eDEBUG_SYMTYPE>(params.SymbolType));
+        Output("Symbols type: %s", Name<eDEBUG_SYMTYPE>(params.SymbolType));
         if (params.Flags) {
-            m_Control->Output(DEBUG_OUTPUT_NORMAL, ", flags:(%d=%s)", params.Flags, Flags<eDEBUG_MODULE>(params.Flags).GetString());
+            Output(", flags:(%d=%s)", params.Flags, Flags<eDEBUG_MODULE>(params.Flags).GetString());
         }
-        m_Control->Output(DEBUG_OUTPUT_NORMAL, "\n");
+        Output("\n");
         switch (params.SymbolType)
         {
         case DEBUG_SYMTYPE_DEFERRED:
@@ -529,7 +529,7 @@ public:
             LPSTR buffer = symbolFileName.GetBufferSetLength(params.SymbolFileNameSize + 2);
             m_Result = m_Symbols3->GetModuleNameString(DEBUG_MODNAME_SYMBOL_FILE, Index, 0, buffer, params.SymbolFileNameSize, NULL);
             if (m_Result == S_OK) {
-                m_Control->Output(DEBUG_OUTPUT_NORMAL, "Symbol file: %s\n", symbolFileName.GetString());
+                Output("Symbol file: %s\n", symbolFileName.GetString());
             } else {
                 LOG("GetModuleNameString failed for %s, error %X\n", name, m_Result);
             }
@@ -546,7 +546,7 @@ public:
     void AppendSymbolPath(const CStringArray& Dirs)
     {
         for (UINT i = 0; i < Dirs.GetCount(); ++i) {
-            m_Control->Output(DEBUG_OUTPUT_NORMAL, "Appending %s\n", Dirs[i].GetString());
+            Output("Appending %s\n", Dirs[i].GetString());
             m_Symbols->AppendSymbolPath(Dirs[i]);
         }
 
@@ -615,6 +615,13 @@ public:
         CTestCommand cmd(m_Client, m_Control, Command);
         cmd.Run();
     }
+    void Output(LPCSTR Format, ...)
+    {
+        va_list list;
+        va_start(list, Format);
+        m_Control->OutputVaList(DEBUG_OUTPUT_NORMAL, Format, list);
+        va_end(list);
+    }
 protected:
     CComPtr<IDebugControl> m_Control;
     CComPtr<IDebugClient>  m_Client;
@@ -623,7 +630,7 @@ protected:
     HRESULT m_Result;
     void WaitForDebugger()
     {
-        m_Control->Output(DEBUG_OUTPUT_NORMAL, "Connect debugger NOW\n");
+        Output("Connect debugger NOW!\n");
         while (!IsDebuggerPresent()) {
             Sleep(1000);
         }
