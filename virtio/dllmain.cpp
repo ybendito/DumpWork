@@ -87,8 +87,9 @@ class CDebugOutputCallback :
 public:
     CDebugOutputCallback(PDEBUG_CLIENT Client) : m_Client(Client)
     {
-        Client->GetOutputCallbacks(&m_Previous);
-        Client->SetOutputCallbacks(this);
+        m_Client.QueryInterface<IDebugControl>(&m_Control);
+        m_Client->GetOutputCallbacks(&m_Previous);
+        m_Client->SetOutputCallbacks(this);
     }
     ~CDebugOutputCallback()
     {
@@ -123,7 +124,8 @@ protected:
     }
 protected:
     CStringArray m_Output;
-    PDEBUG_CLIENT m_Client;
+    CComPtr<IDebugClient> m_Client;
+    CComPtr<IDebugControl> m_Control;
     void CombineOutput(CString& Combined)
     {
         for (int i = 0; i < m_Output.GetCount(); ++i) {
@@ -143,44 +145,46 @@ private:
 class CExternalCommandParser : public CDebugOutputCallback
 {
 public:
-    CExternalCommandParser(PDEBUG_CLIENT Client, PDEBUG_CONTROL Control, LPCSTR Command) :
-        m_Command(Command),
-        m_Control(Control),
-        CDebugOutputCallback(Client)
+    CExternalCommandParser(PDEBUG_CLIENT Client, LPCSTR Command) :
+        CDebugOutputCallback(Client),
+        m_Command(Command)
     {
         // at this point the output callback is set, previous one is saved
     }
     virtual HRESULT Run()
     {
+        bool saveVerbose = bVerbose;
+        if (m_Verbose) {
+            bVerbose = true;
+        }
         HRESULT res = m_Control->Execute(DEBUG_OUTPUT_NORMAL, m_Command, DEBUG_EXECUTE_NO_REPEAT);
+        if (m_Verbose) {
+            bVerbose = saveVerbose;
+        }
         return res;
     }
 protected:
     CString m_Command;
-    PDEBUG_CONTROL m_Control;
+    void BeVerbose() { m_Verbose = true; }
+private:
+    bool m_Verbose = false;
 };
 
-class CTestCommand : CExternalCommandParser
+class CTestCommand : public CExternalCommandParser
 {
 public:
-    CTestCommand(PDEBUG_CLIENT Client, PDEBUG_CONTROL Control, LPCSTR Command) :
-        CExternalCommandParser(Client, Control, Command)
-    {}
-    HRESULT Run() override
+    CTestCommand(PDEBUG_CLIENT Client, LPCSTR Command) :
+        CExternalCommandParser(Client, Command)
     {
-        bool saveVerbose = bVerbose;
-        bVerbose = true;
-        HRESULT res = __super::Run();
-        bVerbose = saveVerbose;
-        return res;
+        BeVerbose();
     }
 };
 
 class CGetVirtioAdapters : public CExternalCommandParser
 {
 public:
-    CGetVirtioAdapters(PDEBUG_CLIENT Client, PDEBUG_CONTROL Control) :
-        CExternalCommandParser(Client, Control, "!ndiskd.miniports") {}
+    CGetVirtioAdapters(PDEBUG_CLIENT Client) :
+        CExternalCommandParser(Client, "!ndiskd.miniports") {}
     void Process(CPtrArray& Adapters)
     {
         //example:
@@ -202,8 +206,8 @@ public:
 class CGetAdapterContext : public CExternalCommandParser
 {
 public:
-    CGetAdapterContext(PDEBUG_CLIENT Client, PDEBUG_CONTROL Control, ULONGLONG Adapter) :
-        CExternalCommandParser(Client, Control, MakeCommand(Adapter)) {}
+    CGetAdapterContext(PDEBUG_CLIENT Client, ULONGLONG Adapter) :
+        CExternalCommandParser(Client, MakeCommand(Adapter)) {}
     void Process(ULONGLONG& Context)
     {
 // example
@@ -255,8 +259,8 @@ public:
 class CCheckPdb : public CExternalCommandParser
 {
 public:
-    CCheckPdb(PDEBUG_CLIENT Client, PDEBUG_CONTROL Control, LPCSTR ModuleName, LPCSTR PdbName) :
-        CExternalCommandParser(Client, Control, MakeCommand(ModuleName, PdbName))
+    CCheckPdb(PDEBUG_CLIENT Client, LPCSTR ModuleName, LPCSTR PdbName) :
+        CExternalCommandParser(Client, MakeCommand(ModuleName, PdbName))
     {}
     bool Parse()
     {
@@ -276,21 +280,14 @@ private:
     }
 };
 
-class CGetLmiData : CExternalCommandParser
+class CGetLmiData : public CExternalCommandParser
 {
 public:
-    CGetLmiData(PDEBUG_CLIENT Client, PDEBUG_CONTROL Control, LPCSTR Name) :
-        CExternalCommandParser(Client, Control, MakeCommand(Name))
+    CGetLmiData(PDEBUG_CLIENT Client, LPCSTR Name) :
+        CExternalCommandParser(Client, MakeCommand(Name))
     {
         VERBOSE("%s: %s", __FUNCTION__, m_Command.GetString());
-    }
-    HRESULT Run() override
-    {
-        bool saveVerbose = bVerbose;
-        bVerbose = true;
-        HRESULT res = __super::Run();
-        bVerbose = saveVerbose;
-        return res;
+        BeVerbose();
     }
     bool Process(GUID& Guid)
     {
@@ -343,7 +340,7 @@ public:
     }
     void TestCommand(LPCSTR Command)
     {
-        CTestCommand cmd(m_Client, m_Control, Command);
+        CTestCommand cmd(m_Client, Command);
         cmd.Run();
     }
 
@@ -394,7 +391,7 @@ protected:
     {
         CString command;
         command.Format("x %s!_any_symbol_just_to_trigger_pdb_loading", ModuleName);
-        CExternalCommandParser cmd(m_Client, m_Control, command);
+        CExternalCommandParser cmd(m_Client, command);
         cmd.Run();
     }
 
@@ -497,7 +494,7 @@ protected:
 
         if (params.SymbolType != DEBUG_SYMTYPE_PDB && MoreOutput)
         {
-            CGetLmiData cmd(m_Client, m_Control, name);
+            CGetLmiData cmd(m_Client, name);
             cmd.Run();
             GUID guid = {};
             if (!cmd.Process(guid)) {
@@ -520,7 +517,7 @@ protected:
 
     bool CheckPdb(LPCSTR Module, LPCSTR PdbFile)
     {
-        CCheckPdb cmd(m_Client, m_Control, Module, PdbFile);
+        CCheckPdb cmd(m_Client, Module, PdbFile);
         cmd.Run();
         return cmd.Parse();
     }
@@ -533,7 +530,7 @@ protected:
         }
 
         if (Dirs.GetCount()) {
-            CExternalCommandParser cmd(m_Client, m_Control, ".reload");
+            CExternalCommandParser cmd(m_Client, ".reload");
             cmd.Run();
         }
     }
@@ -683,7 +680,7 @@ public:
         CPtrArray adapters;
         CString version = "Unknown";
         {
-            CGetVirtioAdapters cmd(m_Client, m_Control);
+            CGetVirtioAdapters cmd(m_Client);
             cmd.Run();
             cmd.Process(adapters);
         }
@@ -694,7 +691,7 @@ public:
             ULONGLONG context = 0;
             Output("#%d: adapter %I64X", i, (ULONGLONG)adapters[i]);
             {
-                CGetAdapterContext cmd(m_Client, m_Control, (ULONGLONG)adapters[i]);
+                CGetAdapterContext cmd(m_Client, (ULONGLONG)adapters[i]);
                 cmd.Run();
                 cmd.Process(context);
                 cmd.Process(version);
