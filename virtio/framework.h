@@ -13,6 +13,7 @@
 #include <WDBGEXTS.H>
 #include <dbgeng.h>
 #include <dbghelp.h>
+//#include <engextcpp.hpp>
 #include "names.h"
 
 extern bool bVerbose;

@@ -3,7 +3,9 @@
 
 #pragma comment(lib, "dbgeng.lib")
 
+//#define THIS_IS_WINDBG_EXTENSION
 WINDBG_EXTENSION_APIS ExtensionApis;
+
 bool bVerbose;
 
 extern "C" __declspec(dllexport) HRESULT verbose(IN PDEBUG_CLIENT Client, IN PCSTR Args)
@@ -21,7 +23,8 @@ extern "C" __declspec(dllexport) HRESULT verbose(IN PDEBUG_CLIENT Client, IN PCS
         bVerbose = false;
     }
     else {
-        control->Output(DEBUG_OUTPUT_NORMAL, "verbose <on|off>\n");
+        //control->Output(DEBUG_OUTPUT_NORMAL, "verbose <on|off>\n");
+        usage();
     }
     if (CString("--help").Compare(Args)) {
         control->Output(DEBUG_OUTPUT_NORMAL, "verbose is %s\n", bVerbose ? "on" : "off");
@@ -347,7 +350,14 @@ public:
     void findpdb(LPCSTR TopDir)
     {
         CStringArray dirs;
-        dirs.Add(TopDir);
+        if (*TopDir) {
+            dirs.Add(TopDir);
+        } else {
+            CPickFolderDialog d;
+            if (d.DoModal() == IDOK) {
+                dirs.Add(d.GetPathName());
+            }
+        }
         CStringArray found;
 
         FindPdbInDirectories(m_Module, found, dirs);
@@ -380,6 +390,27 @@ protected:
         }
         // optional, do not fail if not present
         m_Result = m_Client.QueryInterface<IDebugSymbols3>(&m_Symbols3);
+        if (m_Result != S_OK) {
+            LOG("%s: Can't obtain IDebugSymbols3", __FUNCTION__);
+        }
+
+        ExtensionApis.nSize = sizeof(ExtensionApis);
+        m_Result = m_Control->GetWindbgExtensionApis64(&ExtensionApis);
+        if (m_Result != S_OK) {
+            LOG("%s: Can't obtain WinDbg Extension API (%X)", __FUNCTION__, m_Result);
+            ExtensionApis.nSize = 0;
+        } else {
+            #define chkptr(f) { if (!f) LOG(#f " is not initialized!"); }
+            chkptr(dprintf);
+            chkptr(GetExpression);
+            chkptr(ReadMemory);
+            chkptr(WriteMemory);
+            chkptr(StackTrace);
+            chkptr(Ioctl);
+            chkptr(dprintf);
+
+            #undef chkptr
+        }
     }
     void help()
     {
@@ -603,6 +634,8 @@ protected:
     CComPtr<IDebugSymbols3> m_Symbols3;
     HRESULT m_Result;
     CString m_Module;
+    bool HasEAPI() const { return ExtensionApis.nSize; }
+
     void WaitForDebugger()
     {
         Output("Connect debugger NOW!\n");
@@ -645,32 +678,6 @@ private:
     }
 };
 
-extern "C" __declspec(dllexport) HRESULT CALLBACK DebugExtensionInitialize(
-    OUT PULONG Version,
-    OUT PULONG Flags)
-{
-    *Version = DEBUG_EXTENSION_VERSION(0, 1);
-    *Flags = 0;
-#if USE_EXT_API
-    CComPtr<IDebugControl> control;
-    HRESULT hr = DebugCreate(__uuidof(IDebugControl), (PVOID *)&control);
-    if (hr != S_OK) {
-        LOG("%s: DebugCreate error %X", __FUNCTION__, hr);
-    } else {
-        ExtensionApis.nSize = sizeof(ExtensionApis);
-        hr = control->GetWindbgExtensionApis64(&ExtensionApis);
-        if (hr != S_OK) {
-            LOG("%s: GetWindbgExtensionApis64 error %X", __FUNCTION__, hr);
-        } else {
-            LOG("%s: GetWindbgExtensionApis64 got OK", __FUNCTION__);
-            // this does not produce any affect
-            dprintf("WinDbg extension API active\n");
-        }
-    }
-#endif
-    return S_OK;
-}
-
 class CDebugExtensionNet : public CDebugExtension
 {
 public:
@@ -705,11 +712,27 @@ public:
             }
         }
         CheckSymbols();
+        for (int i = 0; i < adapters.GetCount(); ++i) {
+            ULONG nQueues = 0;
+            if (GetAdapterField(adapters[i], "nPathBundles", nQueues)) {
+                Output("#%d: %d queues\n", i, nQueues);
+            }
+        }
     }
     void help()
     {
         Output("mp - find miniport and symbols in known places\n");
         __super::help();
+    }
+protected:
+    bool GetAdapterField(PVOID Context, LPCSTR Name, ULONG& Value)
+    {
+        if (!HasEAPI())
+            return false;
+        LOG("Getting (%p)->%s", Context, Name);
+        ULONG res = GetFieldValue((ULONG_PTR)Context, "PARANDIS_ADAPTER", Name, Value);
+        LOG("result: %X", res);
+        return !res;
     }
 };
 
@@ -749,7 +772,44 @@ extern "C" __declspec(dllexport) HRESULT findpdb(IN PDEBUG_CLIENT Client, IN PCS
     return S_OK;
 }
 
-extern "C" __declspec(dllexport) void CALLBACK DebugExtensionUninitialize() {}
+#if !THIS_IS_WINDBG_EXTENSION
+
+extern "C" __declspec(dllexport) HRESULT CALLBACK DebugExtensionInitialize(
+    OUT PULONG Version,
+    OUT PULONG Flags)
+{
+    *Version = DEBUG_EXTENSION_VERSION(0, 1);
+    *Flags = 0;
+    LOG("%s: =>", __FUNCTION__);
+    return S_OK;
+}
+
+extern "C" __declspec(dllexport) void CALLBACK DebugExtensionUninitialize()
+{
+    LOG("%s: =>", __FUNCTION__);
+}
+
+#else // THIS_IS_WINDBG_EXTENSION
+
+extern "C" __declspec(dllexport)LPEXT_API_VERSION WDBGAPI ExtensionApiVersion()
+{
+    static EXT_API_VERSION v = { 1, 0, EXT_API_VERSION_NUMBER64, 0 };
+    return &v;
+}
+
+extern "C" __declspec(dllexport) void WDBGAPI WinDbgExtensionDllInit(
+    PWINDBG_EXTENSION_APIS lpExtensionApis,
+    USHORT MajorVersion,
+    USHORT MinorVersion)
+{
+    LOG("%s: %d.%d =>", __FUNCTION__, MajorVersion, MinorVersion);
+    ULONG toCopy = min(lpExtensionApis->nSize, sizeof(ExtensionApis));
+    RtlCopyMemory(&ExtensionApis, lpExtensionApis, toCopy);
+    ExtensionApis.nSize = sizeof(ExtensionApis);
+    dprintf("WinDbg extension API active\n");
+}
+
+#endif
 
 #if 0
 BOOL APIENTRY DllMain( HMODULE hModule,

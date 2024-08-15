@@ -54,4 +54,4 @@
 #define LOG(fmt, ...) fprintf(stdout, fmt ## "\n", __VA_ARGS__)
 #include "engine.h"
 #include "utils.h"
-#include <initguid.h>
+#include "guids.h"

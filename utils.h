@@ -312,3 +312,12 @@ static CStringW StringAToW(const CStringA& s)
         ws += s[i];
     return ws;
 }
+
+class CPickFolderDialog : public CFileDialog
+{
+public:
+    CPickFolderDialog() : CFileDialog(true)
+    {
+        m_bPickFoldersMode = true;
+    }
+};

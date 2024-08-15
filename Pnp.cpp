@@ -2,8 +2,10 @@
 #include <SetupAPI.h>
 #include <devpkey.h>
 #include <newdev.h>
+#include <pciprop.h>
 
 #pragma comment(lib, "setupapi.lib")
+#pragma comment(lib, "uuid.lib")
 
 static void LogBoolResult(const char* Name, bool LogSuccess, BOOL& result)
 {
@@ -92,6 +94,13 @@ public:
     UINT Status() const
     {
         return GetDeviceUlongProperty(DEVPKEY_Device_DevNodeStatus);
+    }
+    CStringA PCIProp(const DEVPROPKEY& PropKey, LPCSTR Name) const
+    {
+        UINT32 val = GetDeviceUlongProperty(PropKey);
+        CStringA s;
+        s.Format("%s=0x%X", Name, val);
+        return s;
     }
     static CString DriverInfoToString(const FILETIME& Date, ULONGLONG& Version, LPWSTR Inf)
     {
@@ -318,17 +327,33 @@ private:
             return 0;
         } else if (!Parameters[0].CompareNoCase("install") && Parameters.GetCount() > 2) {
             InstallDriver(Parameters[1], Parameters[2]);
+        } else if (!Parameters[0].CompareNoCase("pci") && Parameters.GetCount() > 1) {
+            EnumeratePCIProp(Parameters[1]);
+            return 0;
         }
         return 1;
     }
+    template<typename TFunc> void Enum(const CString& PnpId, TFunc Functor)
+    {
+        CInfoSet infoSet(PnpId);
+        auto& devs = infoSet.Devices();
+        for (INT i = 0; i < devs.GetCount(); ++i) {
+            auto& d = devs[i];
+            auto desc = d.Description();
+            LOG("Found: %S\n\t%S", d.Id().GetString(), desc.GetString());
+            Functor(d);
+        }
+    }
     void Enumerate(const CString& PnpId);
+    void EnumeratePCIProp(const CString& PnpId);
     void InstallDriver(const CString& PnpId, const CString& DriverUnique);
     void Help(CStringArray& a) override
     {
         a.Add("enum <PnpID>\t\tenumerate devices and drivers");
         a.Add("install <PnpID> <driver-string>\t\tenumerate devices and drivers");
+        a.Add("pci <PnpID>\t\tquery PCI properties");
     }
-    CStringW GetDriverStoreLocation(const CStringW& InfName)
+    static CStringW GetDriverStoreLocation(const CStringW& InfName)
     {
         WCHAR buffer[MAX_PATH] = L"Unknown";
         BOOL b = SetupGetInfDriverStoreLocationW(InfName, NULL, NULL, buffer, MAX_PATH, NULL);
@@ -338,23 +363,38 @@ private:
 
 void CPnpHandler::Enumerate(const CString& PnpId)
 {
-    CInfoSet infoSet(PnpId);
-    auto& devs = infoSet.Devices();
-    for (INT i = 0; i < devs.GetCount(); ++i) {
-        auto& d = devs[i];
-        auto desc = d.Description();
-        LOG("Found: %S\n\t%S", d.Id().GetString(), desc.GetString());
-        CStringArray drivers;
-        d.GetDrivers(drivers);
-        for (INT j = 0; j < drivers.GetCount(); ++j) {
-            LOG("\t%d: %s", j, drivers[j].GetString());
+    Enum(PnpId,
+        [](const CDeviceInfo& d)
+        {
+            CStringArray drivers;
+            d.GetDrivers(drivers);
+            for (INT j = 0; j < drivers.GetCount(); ++j) {
+                LOG("\t%d: %s", j, drivers[j].GetString());
+            }
+            CStringW infName = d.InfFile();
+            LOG("\tinstalled: %S", infName.GetString());
+            CStringW location = GetDriverStoreLocation(infName);
+            LOG("\t\tat: %S", location.GetString());
         }
-        CStringW infName = d.InfFile();
-        LOG("\tinstalled: %S", infName.GetString());
-        CStringW location = GetDriverStoreLocation(infName);
-        LOG("\t\tat: %S", location.GetString());
-    }
+    );
 }
+
+void CPnpHandler::EnumeratePCIProp(const CString& PnpId)
+{
+    Enum(PnpId,
+        [](const CDeviceInfo& d)
+        {
+            DEVPROPKEY prop = DEVPKEY_PciDevice_AtsSupport;
+            CStringA s = d.PCIProp(prop, "ATS");
+            LOG("%s", s.GetString());
+
+            prop = DEVPKEY_Device_DMARemapping;
+            s = d.PCIProp(prop, "DMAR");
+            LOG("%s", s.GetString());
+        }
+    );
+}
+
 
 void CPnpHandler::InstallDriver(const CString& PnpId, const CString& DriverUnique)
 {
