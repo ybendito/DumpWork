@@ -11,21 +11,40 @@ private:
     {
         if (!Parameters[0].CompareNoCase("perf")) {
             ReportPerfCounter();
-            return 0;
+        }
+        else if (!Parameters[0].CompareNoCase("mm")) {
+            UINT value = atoi(Parameters[1]);
+            LOG("starting timer period for resolution of %d ms", value);
+            ULONG err = timeBeginPeriod(value);
+            if ( err == TIMERR_NOERROR) {
+                puts("Hit ENTER to end the timer period");
+                getchar();
+                timeEndPeriod(value);
+            } else {
+                LOG("failed, error %d", err);
+                TIMECAPS caps;
+                if (timeGetDevCaps(&caps, sizeof(caps)) == TIMERR_NOERROR) {
+                    LOG("possible values %d ... %d", caps.wPeriodMin, caps.wPeriodMax);
+                }
+            }
         } else {
             Measure(Parameters);
-            return 0;
         }
+        return 0;
     }
     void Help(CStringArray& a) override
     {
         a.Add("\"<command line to run>\"\tRun command line and report execution time");
         a.Add("perf\t\t\tReport performance counter resolution");
+        a.Add("mm <millies>\t\tStart multimedia timer");
     }
 };
 
 void CTimeHandler::ReportPerfCounter()
 {
+    LARGE_INTEGER li;
+    QueryPerformanceFrequency(&li);
+    LOG("Perf counter frequency %I64d", li.QuadPart);
 
 }
 
