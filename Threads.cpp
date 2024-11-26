@@ -19,7 +19,7 @@ private:
         BYTE data[sizeof(hash) * 8] = {};
         RtlGenRandom(data, sizeof(data));
         m_Obj.Wait();
-        while (ThreadState() == tsRunning) {
+        while (ShouldContinueRunning()) {
             for (ULONG i = 0; i < m_Loops; ++i) {
                 HashData(data, sizeof(data), hash, sizeof(hash));
             }
@@ -85,7 +85,7 @@ public:
 private:
     void ThreadProc() override
     {
-        while (ThreadState() == tsRunning) {
+        while (ShouldContinueRunning()) {
             Sleep(500);
         }
     }

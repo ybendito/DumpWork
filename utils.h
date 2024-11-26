@@ -87,10 +87,13 @@ public:
         }
         return (tThreadState)val;
     }
+    bool ShouldContinueRunning() const {
+        return ThreadState() == tsRunning;
+    }
 private:
     LONG   m_State = tsNotRunning;
 protected:
-    tThreadState ThreadState() { return (tThreadState)m_State; }
+    tThreadState ThreadState() const { return (tThreadState)m_State; }
     HANDLE m_ThreadHandle = NULL;
     virtual void ThreadProc() = 0;
     virtual void ThreadTerminated(tThreadState previous)
