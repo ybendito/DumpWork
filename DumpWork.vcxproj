@@ -149,6 +149,7 @@
     <ClCompile Include="Files.cpp" />
     <ClCompile Include="guid.cpp" />
     <ClCompile Include="hv.cpp" />
+    <ClCompile Include="Input.cpp" />
     <ClCompile Include="kd.cpp" />
     <ClCompile Include="ParseText.cpp" />
     <ClCompile Include="PatchBin.cpp" />
