@@ -1,36 +1,18 @@
 #include "stdafx.h"
+#include <conio.h>
 
 typedef BYTE tKeys[256];
 
-class CInputHandler : public CCommandHandler, public CThreadOwner
+class CThreadProc : public CThreadOwner
 {
 public:
-    CInputHandler() : CCommandHandler("input", "input related operations", 1) {}
-private:
-    void MonitorKeys();
-    void MonitorMouse();
-    int Run(const CStringArray& Parameters) override
+    CThreadProc(void (*Proc)(const CThreadOwner&) = nullptr) : m_Process(Proc) {}
+    void ThreadProc() override
     {
-        if (!Parameters[0].CompareNoCase("kbd")) {
-            MonitorKeys();
-        } else if (!Parameters[0].CompareNoCase("mouse")) {
-            MonitorMouse();
-        }
-        return 0;
+        m_Process(*this);
     }
-    void Help(CStringArray& a) override
-    {
-        a.Add("kbd\t\t\tReport pressed keys");
-        a.Add("mouse\t\tReport mouse position");
-    }
-    virtual void ThreadProc();
     void (*m_Process)(const CThreadOwner&) = NULL;
 };
-
-void CInputHandler::ThreadProc()
-{
-    m_Process(*this);
-}
 
 CString KeyName(UINT ScanCode)
 {
@@ -76,19 +58,46 @@ static void KbdProcess(const CThreadOwner& o)
     }
 }
 
-void CInputHandler::MonitorKeys()
+class CInputHandler : public CCommandHandler
 {
-    m_Process = KbdProcess;
-    if (!StartThread())
-        return;
+public:
+    CInputHandler() : CCommandHandler("input", "input related operations", 1)
+    {
+        DeclareCommand("kbd", MonitorKeys, 0, 0);
+        DeclareCommand("mouse", MonitorMouse, 0, 0);
+    }
+private:
+    static int MonitorKeys(const CStringArray& Parameters);
+    static int MonitorMouse(const CStringArray& Parameters);
+    void Help(CStringArray& a) override
+    {
+        a.Add("kbd\t\tReport pressed keys");
+        a.Add("mouse\t\tReport mouse position");
+    }
+};
+
+int CInputHandler::MonitorKeys(const CStringArray& Parameters)
+{
+    CThreadProc t(KbdProcess);
+    if (!t.StartThread())
+        return 1;
     puts("Hit ENTER to end the keyboard monitoring");
-    getchar();
-    StopThread();
+    while (true) {
+        int c = _getch();
+        if (c == '\r')
+            break;
+    }
+    Sleep(100);
+
+    t.StopThread();
+    return 0;
 }
 
-void CInputHandler::MonitorMouse()
+int CInputHandler::MonitorMouse(const CStringArray& Parameters)
 {
     // not implemented yet
+    puts("not implemented");
+    return 0;
 }
 
 static CInputHandler ih;
