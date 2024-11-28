@@ -77,17 +77,19 @@ int main(int argc, char **argv)
         auto h = handlers[i];
         CString token = params[0];
         if (!h->Token().CompareNoCase(token)) {
-            params.RemoveAt(0);
-            UINT paramSize = (UINT)params.GetCount();
-
             if (Config().Help) {
                 return h->Usage();
-            } else if (h->MinParams() <= paramSize) {
-                return h->Run(params);
-            } else {
+            }
+            params.RemoveAt(0);
+            UINT paramSize = (UINT)params.GetCount();
+            if (h->MinParams() > paramSize) {
                 ERR("%s requires minimum of %d parameters", token.GetString(), h->MinParams());
                 return h->Usage();
             }
+            if (h->HasCommands()) {
+                return h->ProcessCommand(params);
+            }
+            return h->Run(params);
         }
     }
     return Usage();
