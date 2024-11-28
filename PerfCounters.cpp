@@ -180,7 +180,9 @@ public:
 private:
     int Run(const CStringArray& Parameters) override
     {
-        return PerfCounter(Parameters);
+        if (Parameters.GetCount() > 0)
+            return PerfCounter(Parameters);
+        return Usage();
     }
     void Help(CStringArray& a) override
     {
