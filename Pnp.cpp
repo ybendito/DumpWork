@@ -166,21 +166,31 @@ public:
             }
         });
 
-        if (found == 1) {
-            BOOL reboot = false;
-            SP_DEVINSTALL_PARAMS params;
-            params.cbSize = sizeof(params);
-            BOOL res = SetupDiSelectBestCompatDrv(m_Devinfo, &m_Data);
-            LogBoolResult("SetupDiSelectBestCompatDrv", true, res);
-            res = SetupDiInstallDevice(m_Devinfo, &m_Data);
-            LogBoolResult("SetupDiInstallDevice", true, res);
-            if (res) {
-                res = SetupDiGetDeviceInstallParams(m_Devinfo, &m_Data, &params);
-                LogBoolResult("SetupDiGetDeviceInstallParams", false, res);
-            }
-            if (res && (params.Flags & (DI_NEEDREBOOT | DI_NEEDRESTART))) {
-                LOG("Reboot required");
-            }
+        switch (found) {
+            case 1:
+                {
+                    BOOL reboot = false;
+                    SP_DEVINSTALL_PARAMS params;
+                    params.cbSize = sizeof(params);
+                    BOOL res = SetupDiSelectBestCompatDrv(m_Devinfo, &m_Data);
+                    LogBoolResult("SetupDiSelectBestCompatDrv", true, res);
+                    res = SetupDiInstallDevice(m_Devinfo, &m_Data);
+                    LogBoolResult("SetupDiInstallDevice", true, res);
+                    if (res) {
+                        res = SetupDiGetDeviceInstallParams(m_Devinfo, &m_Data, &params);
+                        LogBoolResult("SetupDiGetDeviceInstallParams", false, res);
+                    }
+                    if (res && (params.Flags & (DI_NEEDREBOOT | DI_NEEDRESTART))) {
+                        LOG("Reboot required");
+                    }
+                }
+                break;
+            case 0:
+                LOG("No suitable driver found");
+                break;
+            default:
+                LOG("%d suitable drivers found", found);
+                break;
         }
     }
     void Restart()
@@ -350,7 +360,7 @@ private:
     void Help(CStringArray& a) override
     {
         a.Add("enum <PnpID>\t\tenumerate devices and drivers");
-        a.Add("install <PnpID> <driver-string>\t\tenumerate devices and drivers");
+        a.Add("install <PnpID> <driver-string>\t\tinstall driver");
         a.Add("pci <PnpID>\t\tquery PCI properties");
     }
     static CStringW GetDriverStoreLocation(const CStringW& InfName)
