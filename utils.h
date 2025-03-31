@@ -324,3 +324,20 @@ public:
         m_bPickFoldersMode = true;
     }
 };
+
+template<typename TFunctor> void Tokenize(CString Text, LPCSTR Delimiters, CStringArray& Result, TFunctor Accept)
+{
+    int n = 0;
+    CString next;
+    do {
+        next = Text.Tokenize(Delimiters, n);
+        LOG("Text %s (pos => %d)", next.GetString(), n);
+        next.Trim();
+        if (!Accept(next)) {
+            continue;
+        }
+        if (next.IsEmpty())
+            break;
+        Result.Add(next);
+    } while (true);
+}
