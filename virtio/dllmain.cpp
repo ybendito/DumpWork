@@ -371,7 +371,20 @@ public:
         }
         AppendSymbolPath(found);
     }
-
+    // this actually works like 'x' command
+    // just returns the address as I64
+    // and does not understand fields
+    void Evaluate(LPCSTR Expression)
+    {
+        DEBUG_VALUE v = {};
+        ULONG remaindexIndex = 0;
+        m_Result = m_Control->Evaluate(Expression, DEBUG_VALUE_INVALID, &v, &remaindexIndex);
+        if (FAILED(m_Result)) {
+            Output("evaluation failed, error %X, index %d\n", m_Result, remaindexIndex);
+            return;
+        }
+        Output("received type %d(%s), value 0x%p\n", v.Type, Name<eDEBUG_VALUE_TYPE>(v.Type), (PVOID)v.I64);
+    }
 protected:
     CDebugExtension(PDEBUG_CLIENT Client, LPCSTR Module, LPCSTR MainContext)
     {
@@ -628,6 +641,40 @@ protected:
         m_Control->OutputVaList(DEBUG_OUTPUT_NORMAL, Format, list);
         va_end(list);
     }
+    bool ResolveSymbol(LPCSTR Name, ULONG& Size, CString& Type, ULONG64& Offset)
+    {
+        CString sFullName;
+        ULONG64 moduleBase;
+        ULONG typeId;
+        char buffer[1024];
+        if (strchr(Name, '!')) {
+            sFullName = Name;
+        }
+        else {
+            sFullName.Format("%s!%s", m_Module.GetString(), Name);
+        }
+        m_Result = m_Symbols->GetOffsetByName(sFullName, &Offset);
+        if (FAILED(m_Result)) {
+            Output("Can't find %s, error %X\n", sFullName.GetString(), m_Result);
+            return false;
+        }
+        m_Result = m_Symbols->GetSymbolTypeId(sFullName, &typeId, &moduleBase);
+        if (FAILED(m_Result)) {
+            Type = "<unknown>";
+            return true;
+        }
+        m_Result = m_Symbols->GetTypeName(moduleBase, typeId, buffer, sizeof(buffer), nullptr);
+        if (FAILED(m_Result)) {
+            Type = "<hard to say>";
+        } else {
+            Type = buffer;
+        }
+        m_Result = m_Symbols->GetTypeSize(moduleBase, typeId, &Size);
+        if (FAILED(m_Result)) {
+            Output("Can't get size of %, error %X\n", Name, m_Result);
+        }
+        return true;
+    }
 protected:
     CComPtr<IDebugControl> m_Control;
     CComPtr<IDebugClient>  m_Client;
@@ -646,6 +693,79 @@ protected:
         }
         Sleep(10000);
         DebugBreak();
+    }
+    void GetDataFromContextField(PVOID Context, LPCSTR FieldName, PVOID Buffer, ULONG Length, ULONG& Result)
+    {
+        Result = GetFieldData((ULONG_PTR)Context, m_MainContext, FieldName, Length, Buffer);
+    }
+    ULONG GetContextFieldSize(LPCSTR FieldName)
+    {
+        return GetStructFieldSize(m_MainContext, FieldName);
+    }
+    ULONG GetStructFieldSize(LPCSTR StructName, LPCSTR FieldName)
+    {
+        ULONG size = 0;
+#if 0
+        PSYM_DUMP_FIELD_CALLBACK callback =
+            [](FIELD_INFO* Field, PVOID UserContext) -> ULONG
+        {
+            LOG("Field callback called");
+            *(PULONG)UserContext = Field->size;
+            return 0;
+        };
+#endif
+        QueryStructField(
+            StructName,
+            FieldName,
+            [&](FIELD_INFO* Field) { size = Field->size; });
+        return size;
+    }
+    template <typename TCallback> bool QueryStructField(
+        LPCSTR StructName,
+        LPCSTR FieldName,
+        TCallback Callback)
+    {
+        FIELD_INFO fi = {};
+
+        PSYM_DUMP_FIELD_CALLBACK callback =
+            [](FIELD_INFO* Field, PVOID UserContext) -> ULONG
+        {
+            FIELD_INFO *fi = (FIELD_INFO *)UserContext;
+            LOG("Field callback called for %s", Field->fName);
+            free(fi->fName);
+            *fi = *Field;
+            fi->fName = (PUCHAR)_strdup((LPCSTR)Field->fName);
+            fi->printName = nullptr;
+            return 0;
+        };
+
+        FIELD_INFO flds;
+        flds.fName = (PUCHAR)FieldName;
+        flds.fOptions = DBG_DUMP_FIELD_RETURN_ADDRESS;
+        flds.fieldCallBack = callback;
+
+        SYM_DUMP_PARAM Sym = {};
+        Sym.size = sizeof(Sym);
+        Sym.sName = (PUCHAR)StructName;
+        Sym.Options = DBG_DUMP_NO_PRINT | DBG_DUMP_CALL_FOR_EACH;
+        Sym.Context = &fi;
+        Sym.nFields = 1;
+        Sym.Fields = &flds;
+
+        if (*FieldName == '*') {
+            Sym.nFields = 0;
+            Sym.CallbackRoutine = callback;
+        }
+
+        ULONG RetVal = Ioctl(IG_DUMP_SYMBOL_INFO, &Sym, Sym.size);
+        if (RetVal) {
+            Output("Can't get info of %s.%s, error %d(%s)\n", FieldName, StructName, RetVal, Name<eSYMBOL_ERROR>(RetVal));
+            return false;
+        }
+
+        Callback(&fi);
+        free(fi.fName);
+        return true;
     }
 private:
     static CString TimeStampToString(ULONG TimeDateStamp)
@@ -718,6 +838,10 @@ public:
             ULONG nQueues = 0;
             if (GetAdapterField(adapters[i], "nPathBundles", nQueues)) {
                 Output("#%d: %d queues\n", i, nQueues);
+                if (adapters.GetCount() == 1) {
+                    StaticData.Adapter = adapters[0];
+                    Output("Adapter #%d selected\n", i);
+                }
             }
         }
     }
@@ -726,17 +850,66 @@ public:
         Output("mp - find miniport and symbols in known places\n");
         __super::help();
     }
+    struct CStaticData
+    {
+        PVOID Adapter = NULL;
+        EXCEPTION_RECORD ExcRecords[4];
+    };
 protected:
+    bool GetAdapterField(PVOID Context, LPCSTR Name, PVOID& Value)
+    {
+        return GetAdapterField(Context, Name, &Value, sizeof(Value));
+    }
     bool GetAdapterField(PVOID Context, LPCSTR Name, ULONG& Value)
     {
+        return GetAdapterField(Context, Name, &Value, sizeof(Value));
+/*
         if (!HasEAPI())
             return false;
         LOG("Getting (%p)->%s", Context, Name);
         ULONG res = GetFieldValue((ULONG_PTR)Context, "PARANDIS_ADAPTER", Name, Value);
         LOG("result: %X", res);
         return !res;
+*/
     }
+    bool GetAdapterField(PVOID Context, LPCSTR FieldName, PVOID Buffer, ULONG Length)
+    {
+        if (!HasEAPI())
+            return false;
+        LOG("Getting (%p)->%s", Context, FieldName);
+        ULONG res;
+        GetAdapterDataSafe(Context, FieldName, Buffer, Length, res);
+        LOG("result: %X", res);
+        if (res) {
+            Output("  error %X(%s)\n", res, Name<eSYMBOL_ERROR>(res));
+        }
+        return !res;
+    }
+    void GetAdapterDataSafe(PVOID Context, LPCSTR FieldName, PVOID Buffer, ULONG Length, ULONG& Result)
+    {
+        __try {
+            GetDataFromContextField(Context, FieldName, Buffer, Length, Result);
+        }
+        __except (FilterException(GetExceptionInformation()->ExceptionRecord)) {
+            Result = GetExceptionCode();
+        }
+    }
+    static ULONG FilterException(PEXCEPTION_RECORD ERec)
+    {
+        RtlZeroMemory(&StaticData.ExcRecords, sizeof(StaticData.ExcRecords));
+        for (int i = 0; i < RTL_NUMBER_OF(StaticData.ExcRecords); ++i) {
+            StaticData.ExcRecords[i] = *ERec;
+            if (!ERec->ExceptionRecord) break;
+            ERec = ERec->ExceptionRecord;
+        }
+        return EXCEPTION_EXECUTE_HANDLER;
+    }
+    static CStaticData StaticData;
 };
+
+// CDebugExtensionNet static data
+CDebugExtensionNet::CStaticData CDebugExtensionNet::StaticData;
+
 
 extern "C" __declspec(dllexport) HRESULT help(IN PDEBUG_CLIENT Client, IN PCSTR Args)
 {
