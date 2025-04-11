@@ -27,3 +27,5 @@ template <typename t> CString Flags(ULONG _val)
 
 typedef enum { eDummy1 = DEBUG_SYMTYPE_NONE } eDEBUG_SYMTYPE;
 typedef enum { eDummy2 = DEBUG_SYMTYPE_NONE } eDEBUG_MODULE;
+typedef enum { eDummy3 = DEBUG_SYMTYPE_NONE } eSYMBOL_ERROR;
+typedef enum { eDummy4 = DEBUG_SYMTYPE_NONE } eDEBUG_VALUE_TYPE;

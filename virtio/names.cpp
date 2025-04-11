@@ -53,3 +53,42 @@ LPCSTR GetName(const eDEBUG_MODULE& val)
     };
     return GET_NAME(names, val);
 }
+
+LPCSTR GetName(const eSYMBOL_ERROR& val)
+{
+# undef MAKE_ENTRY
+#define MAKE_ENTRY(e) { ##e, #e},
+    static tNamedEntry names[] = {
+        MAKE_ENTRY(MEMORY_READ_ERROR)
+        MAKE_ENTRY(SYMBOL_TYPE_INDEX_NOT_FOUND)
+        MAKE_ENTRY(SYMBOL_TYPE_INFO_NOT_FOUND)
+        MAKE_ENTRY(NULL_SYM_DUMP_PARAM)
+        MAKE_ENTRY(NULL_FIELD_NAME)
+        MAKE_ENTRY(INCORRECT_VERSION_INFO)
+        MAKE_ENTRY(INSUFFICIENT_SPACE_TO_COPY)
+        MAKE_ENTRY(ADDRESS_TYPE_INDEX_NOT_FOUND)
+        MAKE_ENTRY(EXIT_ON_CONTROLC)
+    };
+    return GET_NAME(names, val);
+}
+
+LPCSTR GetName(const eDEBUG_VALUE_TYPE& val)
+{
+# undef MAKE_ENTRY
+#define MAKE_ENTRY(e) { DEBUG_VALUE_##e, #e},
+    static tNamedEntry names[] = {
+        MAKE_ENTRY(INVALID)
+        MAKE_ENTRY(INT8)
+        MAKE_ENTRY(INT16)
+        MAKE_ENTRY(INT32)
+        MAKE_ENTRY(INT64)
+        MAKE_ENTRY(FLOAT32)
+        MAKE_ENTRY(FLOAT64)
+        MAKE_ENTRY(FLOAT80)
+        MAKE_ENTRY(FLOAT82)
+        MAKE_ENTRY(FLOAT128)
+        MAKE_ENTRY(VECTOR64)
+        MAKE_ENTRY(VECTOR128)
+    };
+    return GET_NAME(names, val);
+}
