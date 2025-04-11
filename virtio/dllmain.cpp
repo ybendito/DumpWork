@@ -851,9 +851,110 @@ public:
             }
         }
     }
+    void query(PCSTR Args)
+    {
+        if (!StaticData.Adapter) {
+            Output("Adapter not selected, use 'mp' first\n");
+            return;
+        }
+        struct
+        {
+            PCSTR alias;
+            PCSTR field;
+        } aliases[] =
+        {
+            { "queues", "nPathBundles" },
+            { "tx0", "pPathBundles->txPath" },
+        };
+        CStringArray params;
+        ULONG size = 0;
+
+        Tokenize(Args, " ", params, [](CString& Next) { return true; });
+        if (params.GetCount() < 2) {
+            Output("!virtio.query <option> <field of %s or global variable>\n", m_MainContext);
+            Output("Options:\n");
+            Output("   e    evaluate as is\n");
+            Output("   g    read global variable\n");
+            Output("   d    read as dword or less\n");
+            Output("   p    read as pointer\n");
+            Output("   s    just get size and offset\n");
+            return;
+        }
+
+        if (!params[0].CompareNoCase("e")) {
+            Evaluate(params[1]);
+            return;
+        }
+
+        if (!params[0].CompareNoCase("s") || !params[0].CompareNoCase("a")) {
+            size = GetContextFieldSize(params[1]);
+            Output("size of %s = %d\n", params[1].GetString(), size);
+            if (!params[0].CompareNoCase("s")) {
+                return;
+            }
+        }
+
+        if (!params[0].CompareNoCase("d") || (size && size <= sizeof(ULONG))) {
+            ULONG val = 0;
+            GetAdapterField(StaticData.Adapter, params[1], val);
+            Output("%s = %d(%X)\n", params[1].GetString(), val, val);
+            return;
+        }
+
+        if (!params[0].CompareNoCase("p") || size == sizeof(PVOID)) {
+            PVOID p = nullptr;
+            GetAdapterField(StaticData.Adapter, params[1], p);
+            Output("%s = %p\n", params[1].GetString(), p);
+            return;
+        }
+
+        if (!params[0].CompareNoCase("g") && m_Symbols) {
+            ULONG64 offset = 0;
+            CString type;
+            CStringArray names;
+            if (params[1].Find('.') > 0) {
+                Tokenize(params[1], ".", names, [](CString& Next) { return true; });
+            } else {
+                names.Add(params[1]);
+            }
+            if (ResolveSymbol(names[0], size, type, offset)) {
+                Output("%s: %p of %d(%s)\n", names[0].GetString(), (PVOID)offset, size, type.GetString());
+                for (UINT i = 1; i < names.GetSize(); ++i) {
+                    LOG("Looking for %s.%s", type.GetString(), names[i].GetString());
+#if 0
+                    PSYM_DUMP_FIELD_CALLBACK callback =
+                        [](FIELD_INFO* F, PVOID UserContext) -> ULONG
+                    {
+                        LOG("Field callback: %s @%d size %d", F->fName, F->FieldOffset, F->size);
+                        return 0;
+                    };
+#endif
+                    QueryStructField(
+                        type,
+                        names[i],
+                        [&](FIELD_INFO* F)
+                        {
+                            // address is an offset in the parent structure
+                            Output("Field callback: %s @%d size %d\n", F->fName, F->address, F->size);
+                        }
+                    );
+                }
+            }
+            return;
+        }
+
+        if (size) {
+            PVOID p = malloc(size);
+            if (GetAdapterField(StaticData.Adapter, params[1], p, size)) {
+
+            }
+            free(p);
+        }
+    }
     void help()
     {
         Output("mp - find miniport and symbols in known places\n");
+        Output("query - read miniport field\n");
         __super::help();
     }
     struct CStaticData
@@ -949,6 +1050,15 @@ extern "C" __declspec(dllexport) HRESULT findpdb(IN PDEBUG_CLIENT Client, IN PCS
     VERBOSE("%s: =>", __FUNCTION__);
     CDebugExtensionNet e(Client);
     e.findpdb(Args);
+    VERBOSE("%s: <=", __FUNCTION__);
+    return S_OK;
+}
+
+extern "C" __declspec(dllexport) HRESULT query(IN PDEBUG_CLIENT Client, IN PCSTR Args)
+{
+    VERBOSE("%s: =>", __FUNCTION__);
+    CDebugExtensionNet e(Client);
+    e.query(Args);
     VERBOSE("%s: <=", __FUNCTION__);
     return S_OK;
 }
