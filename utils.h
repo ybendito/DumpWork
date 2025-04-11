@@ -333,11 +333,11 @@ template<typename TFunctor> void Tokenize(CString Text, LPCSTR Delimiters, CStri
         next = Text.Tokenize(Delimiters, n);
         LOG("Text %s (pos => %d)", next.GetString(), n);
         next.Trim();
+        if (next.IsEmpty())
+            break;
         if (!Accept(next)) {
             continue;
         }
-        if (next.IsEmpty())
-            break;
         Result.Add(next);
     } while (true);
 }
