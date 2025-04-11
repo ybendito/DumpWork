@@ -373,11 +373,12 @@ public:
     }
 
 protected:
-    CDebugExtension(PDEBUG_CLIENT Client, LPCSTR Module)
+    CDebugExtension(PDEBUG_CLIENT Client, LPCSTR Module, LPCSTR MainContext)
     {
         LOG("%s %s", __FUNCTION__, Module);
         m_Module = Module;
         m_Client = Client;
+        m_MainContext = MainContext;
         m_Result = m_Client.QueryInterface<IDebugControl>(&m_Control);
         if (m_Result != S_OK) {
             ERR("%s: Can't obtain IDebugControl", __FUNCTION__);
@@ -634,6 +635,7 @@ protected:
     CComPtr<IDebugSymbols3> m_Symbols3;
     HRESULT m_Result;
     CString m_Module;
+    CString m_MainContext;
     bool HasEAPI() const { return ExtensionApis.nSize; }
 
     void WaitForDebugger()
@@ -681,7 +683,7 @@ private:
 class CDebugExtensionNet : public CDebugExtension
 {
 public:
-    CDebugExtensionNet(PDEBUG_CLIENT Client) : CDebugExtension(Client, "netkvm") {}
+    CDebugExtensionNet(PDEBUG_CLIENT Client) : CDebugExtension(Client, "netkvm", "PARANDIS_ADAPTER") {}
     void mp()
     {
         CPtrArray adapters;
