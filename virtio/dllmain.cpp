@@ -407,6 +407,11 @@ protected:
         if (m_Result != S_OK) {
             LOG("%s: Can't obtain IDebugSymbols3", __FUNCTION__);
         }
+        // optional, do not fail if not present
+        m_Result = m_Client.QueryInterface<IDebugControl3>(&m_Control3);
+        if (m_Result != S_OK) {
+            LOG("%s: Can't obtain IDebugControl3", __FUNCTION__);
+        }
 
         ExtensionApis.nSize = sizeof(ExtensionApis);
         m_Result = m_Control->GetWindbgExtensionApis64(&ExtensionApis);
@@ -680,6 +685,7 @@ protected:
     CComPtr<IDebugClient>  m_Client;
     CComPtr<IDebugSymbols> m_Symbols;
     CComPtr<IDebugSymbols3> m_Symbols3;
+    CComPtr<IDebugControl3> m_Control3;
     HRESULT m_Result;
     CString m_Module;
     CString m_MainContext;
