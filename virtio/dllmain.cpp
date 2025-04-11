@@ -334,6 +334,29 @@ private:
     }
 };
 
+class CDumpNameGetter : public CExternalCommandParser
+{
+public:
+    CDumpNameGetter(PDEBUG_CLIENT Client) :
+        CExternalCommandParser(Client, "dx -r0 Debugger.Sessions[0]")
+    {}
+    CString Parse()
+    {
+        for (UINT i = 0; i < m_Output.GetCount(); ++i) {
+            m_Output[i].MakeLower();
+            if (m_Output[i].Find(".dmp")) {
+                CString s = m_Output[i];
+                LOG("Found %s", s.GetString());
+                s.Delete(0, 6 + s.Find("dump:"));
+                s.Delete(s.ReverseFind('\\'), MAXINT16);
+                LOG("Assuming %s", s.GetString());
+                return s;
+            }
+        }
+        return "";
+    }
+};
+
 class CDebugExtension
 {
 public:
@@ -626,18 +649,21 @@ protected:
             return;
         symPath.SetAt(got, 0);
         LOG("SymPath=%s(len %d)\n", symPath.GetString(), got);
-        n = 0;
-        CString next;
-        do {
-            next = symPath.Tokenize(";", n);
-            LOG("SubPath %s (pos => %d)", next.GetString(), n);
-            if (next.Find('*') >= 0)
-                continue;
-            if (next.IsEmpty())
-                break;
-            Dirs.Add(next);
-        } while (true);
-        Dirs.Add(".");
+
+        Tokenize(symPath, ";", Dirs, [&](CString& next)
+            {
+                if (next.Find('*') >= 0)
+                    return false;
+                return true;
+            });
+
+        // add dump file directory, if any
+        CDumpNameGetter getter(m_Client);
+        getter.Run();
+        symPath = getter.Parse();
+        if (!symPath.IsEmpty()) {
+            Dirs.Add(symPath);
+        }
     }
     void Output(LPCSTR Format, ...)
     {
