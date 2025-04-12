@@ -357,6 +357,56 @@ public:
     }
 };
 
+class CFieldInfo
+{
+public:
+    CFieldInfo(const FIELD_INFO &Info) : m_Info(Info)
+    {
+        m_Info.printName = nullptr;
+        m_Name = Info.fName;
+        m_Info.fName = (PUCHAR)m_Name.GetBuffer();
+        Describe();
+    }
+    CFieldInfo& operator =(const CFieldInfo& Other)
+    {
+        m_Name = Other.m_Name;
+        m_Type = Other.m_Type;
+        m_Info = Other.m_Info;
+        m_Info.fName = (PUCHAR)m_Name.GetBuffer();
+        m_Description = Other.m_Description;
+        return *this;
+    }
+    CFieldInfo() { }
+    void Type(LPCSTR Type) { m_Type = Type; }
+    LPCSTR Type() const { return m_Type; }
+    LPCSTR Description() const { return m_Description; }
+    operator FIELD_INFO& () { return m_Info; }
+    operator FIELD_INFO* () { return &m_Info; }
+    operator const FIELD_INFO& () const { return m_Info; }
+    operator const FIELD_INFO* () const { return &m_Info; }
+    ULONG64 Offset() const { return m_Info.address; }
+    ULONG Size() const { return m_Info.size; }
+private:
+    FIELD_INFO m_Info = {};
+    CString m_Name;
+    CString m_Description;
+    CString m_Type;
+    void Describe()
+    {
+        auto append = [&](LPCSTR s) {
+            if (!m_Description.IsEmpty()) {
+                m_Description += ',';
+            }
+            m_Description += s;
+        };
+        if (m_Info.fStatic) append("static");
+        if (m_Info.fConstant) append("const");
+        if (m_Info.fArray) append("array");
+        if (m_Info.fPointer) append("ptr");
+        if (m_Info.fStruct) append("struct");
+    }
+};
+
 class CDebugExtension
 {
 public:
@@ -735,35 +785,32 @@ protected:
     {
         Result = GetFieldData((ULONG_PTR)Context, m_MainContext, FieldName, Length, Buffer);
     }
-    ULONG GetContextFieldSize(LPCSTR FieldName)
+    bool GetContextFieldProperties(LPCSTR FieldName, CFieldInfo& Info)
     {
-        return GetStructFieldSize(m_MainContext, FieldName);
+        return GetStructFieldProperties(m_MainContext, FieldName, Info);
     }
-    ULONG GetStructFieldSize(LPCSTR StructName, LPCSTR FieldName)
+    bool GetStructFieldProperties(LPCSTR StructName, LPCSTR FieldName, CFieldInfo& Info)
     {
-        ULONG size = 0;
-        QueryStructField(
+        return QueryStructField(
             StructName,
             FieldName,
-            [&](FIELD_INFO* Field) { size = Field->size; });
-        return size;
+            [&](const CFieldInfo& Field) { Info = Field; });
     }
+
     template <typename TCallback> bool QueryStructField(
         LPCSTR StructName,
         LPCSTR FieldName,
         TCallback Callback)
     {
-        FIELD_INFO fi = {};
+        CArray<CFieldInfo> fields;
 
         PSYM_DUMP_FIELD_CALLBACK callback =
             [](FIELD_INFO* Field, PVOID UserContext) -> ULONG
         {
-            FIELD_INFO *fi = (FIELD_INFO *)UserContext;
+            decltype(fields)* pFields = (decltype(fields)*)UserContext;
             LOG("Field callback called for %s", Field->fName);
-            free(fi->fName);
-            *fi = *Field;
-            fi->fName = (PUCHAR)_strdup((LPCSTR)Field->fName);
-            fi->printName = nullptr;
+            CFieldInfo f(*Field);
+            pFields->Add(f);
             return 0;
         };
 
@@ -776,7 +823,7 @@ protected:
         Sym.size = sizeof(Sym);
         Sym.sName = (PUCHAR)StructName;
         Sym.Options = DBG_DUMP_NO_PRINT | DBG_DUMP_CALL_FOR_EACH;
-        Sym.Context = &fi;
+        Sym.Context = &fields;
         Sym.nFields = 1;
         Sym.Fields = &flds;
 
@@ -791,8 +838,13 @@ protected:
             return false;
         }
 
-        Callback(&fi);
-        free(fi.fName);
+        for (UINT i = 0; i < fields.GetCount(); ++i) {
+            CString type;
+            GetTypeName(Sym.ModBase, FIELD_INFO(fields[i]).TypeId, type);
+            fields[i].Type(type);
+            Callback(fields[i]);
+        }
+
         return true;
     }
 private:
@@ -899,7 +951,7 @@ public:
             Output("   g    read global variable\n");
             Output("   d    read as dword or less\n");
             Output("   p    read as pointer\n");
-            Output("   s    just get size and offset\n");
+            Output("   s    get size, offset, type\n");
             return;
         }
 
@@ -909,8 +961,17 @@ public:
         }
 
         if (!params[0].CompareNoCase("s") || !params[0].CompareNoCase("a")) {
-            size = GetContextFieldSize(params[1]);
-            Output("size of %s = %d\n", params[1].GetString(), size);
+            CFieldInfo info;
+            if (!GetContextFieldProperties(params[1], info)) {
+                return;
+            }
+            Output("%s @%p, size %d, type %s (%s)\n",
+                params[1].GetString(),
+                (PVOID)(info.Offset() + (ULONG64)StaticData.Adapter),
+                info.Size(),
+                info.Type(),
+                info.Description());
+            size = info.Size();
             if (!params[0].CompareNoCase("s")) {
                 return;
             }
@@ -941,15 +1002,40 @@ public:
             }
             if (ResolveSymbol(names[0], size, type, offset)) {
                 Output("%s: %p of %d(%s)\n", names[0].GetString(), (PVOID)offset, size, type.GetString());
+                CString combined = names[0];
                 for (UINT i = 1; i < names.GetSize(); ++i) {
                     LOG("Looking for %s.%s", type.GetString(), names[i].GetString());
+                    bool multiple = *names[i].GetString() == '*';
                     QueryStructField(
                         type,
                         names[i],
-                        [&](FIELD_INFO* F)
+                        [&](const CFieldInfo& F)
                         {
+                            const FIELD_INFO* f = F;
                             // address is an offset in the parent structure
-                            Output("Field callback: %s @%d size %d\n", F->fName, F->address, F->size);
+                            if (!multiple) {
+                                offset += f->address;
+                                size = f->size;
+                                combined += '.';
+                                combined += (LPCSTR)f->fName;
+                                type = F.Type();
+                                Output("%s @%p size %d, type %s (%s)\n",
+                                    combined.GetString(),
+                                    (PVOID)offset,
+                                    f->size,
+                                    F.Type(),
+                                    F.Description());
+                            }
+                            else
+                            {
+                                Output("%s.%s offset @%d size %d, type %s (%s)\n",
+                                    combined.GetString(),
+                                    (LPCSTR)f->fName,
+                                    (ULONG)f->address,
+                                    f->size,
+                                    F.Type(),
+                                    F.Description());
+                            }
                         }
                     );
                 }
