@@ -737,15 +737,6 @@ protected:
     ULONG GetStructFieldSize(LPCSTR StructName, LPCSTR FieldName)
     {
         ULONG size = 0;
-#if 0
-        PSYM_DUMP_FIELD_CALLBACK callback =
-            [](FIELD_INFO* Field, PVOID UserContext) -> ULONG
-        {
-            LOG("Field callback called");
-            *(PULONG)UserContext = Field->size;
-            return 0;
-        };
-#endif
         QueryStructField(
             StructName,
             FieldName,
@@ -947,14 +938,6 @@ public:
                 Output("%s: %p of %d(%s)\n", names[0].GetString(), (PVOID)offset, size, type.GetString());
                 for (UINT i = 1; i < names.GetSize(); ++i) {
                     LOG("Looking for %s.%s", type.GetString(), names[i].GetString());
-#if 0
-                    PSYM_DUMP_FIELD_CALLBACK callback =
-                        [](FIELD_INFO* F, PVOID UserContext) -> ULONG
-                    {
-                        LOG("Field callback: %s @%d size %d", F->fName, F->FieldOffset, F->size);
-                        return 0;
-                    };
-#endif
                     QueryStructField(
                         type,
                         names[i],
@@ -996,14 +979,6 @@ protected:
     bool GetAdapterField(PVOID Context, LPCSTR Name, ULONG& Value)
     {
         return GetAdapterField(Context, Name, &Value, sizeof(Value));
-/*
-        if (!HasEAPI())
-            return false;
-        LOG("Getting (%p)->%s", Context, Name);
-        ULONG res = GetFieldValue((ULONG_PTR)Context, "PARANDIS_ADAPTER", Name, Value);
-        LOG("result: %X", res);
-        return !res;
-*/
     }
     bool GetAdapterField(PVOID Context, LPCSTR FieldName, PVOID Buffer, ULONG Length)
     {
