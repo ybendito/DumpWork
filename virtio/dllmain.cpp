@@ -762,7 +762,7 @@ protected:
             return 0;
         };
 
-        FIELD_INFO flds;
+        FIELD_INFO flds = {};
         flds.fName = (PUCHAR)FieldName;
         flds.fOptions = DBG_DUMP_FIELD_RETURN_ADDRESS;
         flds.fieldCallBack = callback;
