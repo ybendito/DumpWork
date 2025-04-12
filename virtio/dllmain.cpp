@@ -672,12 +672,20 @@ protected:
         m_Control->OutputVaList(DEBUG_OUTPUT_NORMAL, Format, list);
         va_end(list);
     }
+    void GetTypeName(ULONG64 moduleBase, ULONG typeId, CString& Name)
+    {
+        char buffer[1024];
+        if (FAILED(m_Symbols->GetTypeName(moduleBase, typeId, buffer, sizeof(buffer), nullptr))) {
+            Name = "hard to say>";
+        } else {
+            Name = buffer;
+        }
+    }
     bool ResolveSymbol(LPCSTR Name, ULONG& Size, CString& Type, ULONG64& Offset)
     {
         CString sFullName;
         ULONG64 moduleBase;
         ULONG typeId;
-        char buffer[1024];
         if (strchr(Name, '!')) {
             sFullName = Name;
         }
@@ -693,13 +701,10 @@ protected:
         if (FAILED(m_Result)) {
             Type = "<unknown>";
             return true;
+
         }
-        m_Result = m_Symbols->GetTypeName(moduleBase, typeId, buffer, sizeof(buffer), nullptr);
-        if (FAILED(m_Result)) {
-            Type = "<hard to say>";
-        } else {
-            Type = buffer;
-        }
+        GetTypeName(moduleBase, typeId, Type);
+
         m_Result = m_Symbols->GetTypeSize(moduleBase, typeId, &Size);
         if (FAILED(m_Result)) {
             Output("Can't get size of %, error %X\n", Name, m_Result);
