@@ -364,8 +364,7 @@ public:
     CFieldInfo(const FIELD_INFO &Info) : m_Info(Info)
     {
         m_Info.printName = nullptr;
-        m_Name = Info.fName;
-        m_Info.fName = (PUCHAR)m_Name.GetBuffer();
+        Name((LPCSTR)Info.fName);
         Describe();
     }
     CFieldInfo& operator =(const CFieldInfo& Other)
@@ -379,6 +378,8 @@ public:
     }
     CFieldInfo() { }
     void Type(LPCSTR Type) { m_Type = Type; }
+    void Name(LPCSTR Name) { m_Name = Name; m_Info.fName = (PUCHAR)m_Name.GetBuffer(); }
+    LPCSTR Name() const { return m_Name; }
     LPCSTR Type() const { return m_Type; }
     LPCSTR Description() const { return m_Description; }
     operator FIELD_INFO& () { return m_Info; }
@@ -387,6 +388,7 @@ public:
     operator const FIELD_INFO* () const { return &m_Info; }
     ULONG64 Offset() const { return m_Info.address; }
     ULONG Size() const { return m_Info.size; }
+    void AdjustOffset(LONG Change) { m_Info.address += Change; }
 private:
     FIELD_INFO m_Info = {};
     CString m_Name;
@@ -407,6 +409,8 @@ private:
         if (m_Info.fStruct) append("struct");
     }
 };
+
+typedef CArray<CFieldInfo> CFieldsArray;
 
 class CDebugExtension
 {
