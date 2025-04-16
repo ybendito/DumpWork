@@ -2,6 +2,7 @@
 #include "pch.h"
 
 #pragma comment(lib, "dbgeng.lib")
+#pragma comment(lib, "dbghelp.lib")
 
 //#define THIS_IS_WINDBG_EXTENSION
 WINDBG_EXTENSION_APIS ExtensionApis;
