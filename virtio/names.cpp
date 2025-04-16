@@ -92,3 +92,33 @@ LPCSTR GetName(const eDEBUG_VALUE_TYPE& val)
     };
     return GET_NAME(names, val);
 }
+
+LPCSTR GetName(const enum SymTagEnum& val)
+{
+# undef MAKE_ENTRY
+#define MAKE_ENTRY(e) { SymTag##e, #e},
+    static tNamedEntry names[] = {
+        MAKE_ENTRY(Null)
+        MAKE_ENTRY(Exe)
+        MAKE_ENTRY(Compiland)
+        MAKE_ENTRY(CompilandDetails)
+        MAKE_ENTRY(CompilandEnv)
+        MAKE_ENTRY(Function)
+        MAKE_ENTRY(Block)
+        MAKE_ENTRY(Data)
+        MAKE_ENTRY(Annotation)
+        MAKE_ENTRY(Label)
+        MAKE_ENTRY(PublicSymbol)
+        MAKE_ENTRY(UDT)
+        MAKE_ENTRY(Enum)
+        MAKE_ENTRY(FunctionType)
+        MAKE_ENTRY(PointerType)
+        MAKE_ENTRY(ArrayType)
+        MAKE_ENTRY(BaseType)
+        MAKE_ENTRY(Typedef)
+        MAKE_ENTRY(Custom)
+        MAKE_ENTRY(CustomType)
+    };
+    return GET_NAME(names, val);
+}
+
