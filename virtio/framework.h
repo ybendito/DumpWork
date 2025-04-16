@@ -10,6 +10,7 @@
 #include <iostream>
 
 #define KDEXT_64BIT
+#define _NO_CVCONST_H
 #include <WDBGEXTS.H>
 #include <dbgeng.h>
 #include <dbghelp.h>
