@@ -1090,6 +1090,11 @@ protected:
             // no printout from callback when _just_ enumerating fields
             fVerboseInCallback = !!Address;
         }
+        if (*FieldName == '!') {
+            Sym.nFields = 0;
+            Sym.CallbackRoutine = callback;
+            Sym.addr = address;
+        }
         if (*FieldName == 0) {
             Sym.nFields = 0;
             Sym.CallbackRoutine = callback;
