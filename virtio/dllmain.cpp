@@ -1039,6 +1039,7 @@ protected:
     {
         bool fArrayMember = false;
         bool fStructArray = false;
+        bool fVerboseInCallback = true;
         UINT index = 0;
         INT pos;
         CString type, name;
@@ -1064,7 +1065,7 @@ protected:
             [](FIELD_INFO* Field, PVOID UserContext) -> ULONG ATL_NOINLINE
         {
             CFieldsArray* pFields = (CFieldsArray *)UserContext;
-            LOG("Field callback called for %s, address %p", Field->fName, (PVOID)Field->address);
+            VERBOSE("Field callback called for %s, address %p", Field->fName, (PVOID)Field->address);
             CFieldInfo f(*Field);
             pFields->Add(f);
             return 0;
@@ -1086,6 +1087,8 @@ protected:
         if (*FieldName == '*') {
             Sym.nFields = 0;
             Sym.CallbackRoutine = callback;
+            // no printout from callback when _just_ enumerating fields
+            fVerboseInCallback = !!Address;
         }
         if (*FieldName == 0) {
             Sym.nFields = 0;
@@ -1093,7 +1096,10 @@ protected:
             Sym.Options &= ~DBG_DUMP_CALL_FOR_EACH;
         }
 
+        bool saveVerbose = bVerbose;
+        bVerbose = fVerboseInCallback;
         ULONG RetVal = Ioctl(IG_DUMP_SYMBOL_INFO, &Sym, Sym.size);
+        bVerbose = saveVerbose;
         if (RetVal) {
             Output("Can't get info of %s.%s, error %d(%s)\n", StructName, FieldName, RetVal, Name<eSYMBOL_ERROR>(RetVal));
             return false;
