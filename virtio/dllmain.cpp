@@ -404,6 +404,12 @@ public:
     void AdjustOffset(LONG Change) { m_Info.address += Change; }
     bool IsReal() const { return FieldIsReal(m_Info); }
     bool IsPointer() const { return m_Info.fPointer; }
+    bool IsList() const
+    {
+        bool b = !m_Type.Compare("_LIST_ENTRY") || m_Type.Compare("LIST_ENTRY");
+        b = b && !m_Name.Compare("m_List");
+        return b;
+    }
 private:
     FIELD_INFO m_Info = {};
     CString m_Name;
@@ -1019,7 +1025,7 @@ protected:
     // Path[0] = type or name of Base, for visibility only
     // Base might be with (context or resolved) or
     // without address (when only type is given)
-    bool ATL_NOINLINE TraverseToField(CFieldInfo& Base, CStringArray& Path)
+    bool ATL_NOINLINE TraverseToField(CFieldInfo& Base, CStringArray& Path, CPureParser& Parser = DummyParser)
     {
         CString type = Base.Type();
         CString combined = Path[0];
@@ -1060,6 +1066,10 @@ protected:
                     // TODO - adjust offset (incl. *() and [])
                     // offset += f.Offset();
                     size = f.Size();
+                    if (i == (Path.GetCount() - 1) && f.IsReal() && f.IsList()) {
+                        // last field is root list entry
+                        Parser.Process(f.Offset(), type);
+                    }
                     type = f.Type();
                     combined.AppendFormat(".%s", f.Name());
                 }
@@ -1348,6 +1358,7 @@ public:
             Output("   p    read as pointer\n");
             Output("   s    get size, offset, type\n");
             Output("   a    get size, offset, type then read\n");
+            Output("   l    {path to root entry} - dump list\n");
             return;
         }
 
@@ -1385,6 +1396,13 @@ public:
             if (!params[0].CompareNoCase("s")) {
                 return;
             }
+        }
+
+        if (!params[0].CompareNoCase("l")) {
+            CListParser parser(m_Control3);
+            names.InsertAt(0, m_MainContext);
+            QueryStruct(m_MainContext, base, (ULONG64)StaticData.Adapter);
+            TraverseToField(base, names, parser);
         }
 
         if (!params[0].CompareNoCase("d") || (size && size <= sizeof(ULONG))) {
