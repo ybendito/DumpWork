@@ -489,8 +489,7 @@ public:
         int found = listType.Find('<');
         if (found > 0) {
             int end = listType.FindOneOf(">,");
-            if (end > found)
-            {
+            if (end > found) {
                 LOG("%s: from %d to %d", __FUNCTION__, found, end);
                 entryType = listType.Mid(found + 1, end - found - 1);
             }
@@ -513,8 +512,7 @@ public:
         LIST_ENTRY localRoot, localCurrent;
         ULONG64 targetCurrent, targetNext;
         localRoot = readEntry(Root);
-        for (targetCurrent = (ULONG64)localRoot.Flink; targetCurrent != Root; targetCurrent = targetNext)
-        {
+        for (targetCurrent = (ULONG64)localRoot.Flink; targetCurrent != Root; targetCurrent = targetNext) {
             localCurrent = readEntry(targetCurrent);
             targetNext = (ULONG64)localCurrent.Flink;
             ULONG64 object = targetCurrent - offset;
