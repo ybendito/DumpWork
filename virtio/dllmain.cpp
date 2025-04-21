@@ -447,7 +447,7 @@ struct ADDRESS_INFO
 class CPureParser
 {
 public:
-    virtual void Process(ULONG64 Root, LPCSTR ListType) = 0;
+    virtual void Process(const CFieldInfo& Field, LPCSTR OuterType) = 0;
 };
 
 template <typename TParam>
@@ -455,21 +455,20 @@ class CBasicParser : public CPureParser
 {
 protected:
     CBasicParser(TParam Parameter) : m_Parameter(Parameter) {}
-    void Process(ULONG64 Root, LPCSTR ListType) override
+    void Process(const CFieldInfo& Field, LPCSTR OuterType) override
     {
-        Worker(Root, ListType);
+        Worker(Field, OuterType);
     }
-    virtual void Worker(ULONG64, LPCSTR) = 0;
+    virtual void Worker(const CFieldInfo& Field, LPCSTR OuterType) = 0;
     TParam m_Parameter;
 };
 
-static auto DummyFunctor = [](ULONG64, LPCSTR) {};
 class CDummyParser : public CBasicParser<int>
 {
 public:
     CDummyParser() : CBasicParser(0) {}
 protected:
-    void Worker(ULONG64, LPCSTR) override {};
+    void Worker(const CFieldInfo&, LPCSTR) override {};
 };
 
 static CDummyParser DummyParser;
@@ -478,13 +477,18 @@ class CListParser : public CBasicParser<IDebugControl3 *>
 {
 public:
     CListParser(IDebugControl3 *p) : CBasicParser(p) {}
-    void Worker(ULONG64 Root, LPCSTR ListType) override
+    void Worker(const CFieldInfo& Field, LPCSTR OuterType) override
     {
-        CString listType = ListType;
+        if (!Field.IsReal() || !Field.IsList()) {
+            return;
+        }
+
+        CString listType = OuterType;
         CString entryType;
+        ULONG64 Root = Field.Offset();
         ULONG offset;
 
-        LOG("%s: @%p %s", __FUNCTION__, (PVOID)Root, ListType);
+        LOG("%s: @%p %s", __FUNCTION__, (PVOID)Root, OuterType);
 
         int found = listType.Find('<');
         if (found > 0) {
@@ -524,6 +528,19 @@ public:
                 entryType.GetString(), (PVOID)object);
         }
     }
+};
+
+class CFieldParser : public CBasicParser<int>
+{
+public:
+    CFieldParser() : CBasicParser(0) {}
+    void Worker(const CFieldInfo& Field, LPCSTR OuterType) override
+    {
+        m_Info = Field;
+    }
+    CFieldInfo& Info() { return m_Info; }
+protected:
+    CFieldInfo m_Info;
 };
 
 class CDebugExtension
@@ -1061,12 +1078,9 @@ protected:
                     f.Description());
                 if (fields.GetCount() == 1) {
                     // one field of interest
-                    // TODO - adjust offset (incl. *() and [])
-                    // offset += f.Offset();
-                    size = f.Size();
-                    if (i == (Path.GetCount() - 1) && f.IsReal() && f.IsList()) {
-                        // last field is root list entry
-                        Parser.Process(f.Offset(), type);
+                    if (i == (Path.GetCount() - 1)) {
+                        // last field in a chain
+                        Parser.Process(f, type);
                     }
                     type = f.Type();
                     combined.AppendFormat(".%s", f.Name());
