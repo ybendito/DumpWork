@@ -1227,12 +1227,16 @@ protected:
                 // return original name with [...]
                 Fields[i].Name(FieldName);
             }
+            bool bUpdateAddress = false;
             if (Fields.GetCount() == 1 && Address) {
                 // dereference if this is a pointer
                 if (fArrayMember && Fields[i].IsPointer()) {
                     if (!Fields[i].IsReal() || !ReadMemory(info.address, &info.address, sizeof(info.address), NULL)) {
                         info.address = 0;
                         FieldMarkReal(info, false);
+                    } else {
+                        // dereferenced
+                        bUpdateAddress = true;
                     }
                 }
                 Address->Address = info.address;
@@ -1241,6 +1245,9 @@ protected:
             // set the type name
             // if needed: dereference the type and adjust the pointer
             UpdateInfo(Sym.ModBase, Fields[i], fArrayMember, index);
+            if (bUpdateAddress) {
+                Address->Address = info.address;
+            }
         }
 
         if (*FieldName == 0 && Fields.GetCount() == 0) {
