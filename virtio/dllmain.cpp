@@ -431,7 +431,25 @@ private:
     }
 };
 
-typedef CArray<CFieldInfo> CFieldsArray;
+typedef CArray<CFieldInfo> CBasicFieldsArray;
+class CFieldsArray : public CBasicFieldsArray
+{
+public:
+    void SetFilter(LPCSTR Filter) { m_Filter = Filter; }
+    INT_PTR Add(const CFieldInfo& Info)
+    {
+        if (!m_Filter.IsEmpty() && !Match(Info.Name())) {
+            return -1;
+        }
+        return __super::Add(Info);
+    }
+protected:
+    CString m_Filter;
+    bool Match(LPCSTR Name)
+    {
+        return PathMatchSpecA(Name, m_Filter);
+    }
+};
 
 struct ADDRESS_INFO
 {
@@ -1190,11 +1208,13 @@ protected:
         Sym.nFields = 1;
         Sym.Fields = &flds;
 
-        if (*FieldName == '*') {
+        // is this wildcard?
+        if (strchr(FieldName,'*')) {
             Sym.nFields = 0;
             Sym.CallbackRoutine = callback;
             // no printout from callback when _just_ enumerating fields
             fVerboseInCallback = !!Address;
+            Fields.SetFilter(FieldName);
         }
         if (*FieldName == '!') {
             Sym.nFields = 0;
