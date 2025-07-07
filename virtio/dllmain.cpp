@@ -694,16 +694,20 @@ protected:
         GetExternalSymbolDirectories(dirs);
         FindPdbInDirectories(Name, Dirs, dirs);
     }
+    void GetSymbolPath(CString& Path)
+    {
+        int n = 2048;
+        ULONG got = 0;
+        m_Symbols->GetSymbolPath(Path.GetBufferSetLength(n), n, &got);
+        if (!got)
+            return;
+        Path.SetAt(got, 0);
+        LOG("SymPath=%s(len %d)\n", Path.GetString(), got);
+    }
     void GetExternalSymbolDirectories(CStringArray& Dirs)
     {
         CString symPath;
-        int n = 2048;
-        ULONG got = 0;
-        m_Symbols->GetSymbolPath(symPath.GetBufferSetLength(n), n, &got);
-        if (!got)
-            return;
-        symPath.SetAt(got, 0);
-        LOG("SymPath=%s(len %d)\n", symPath.GetString(), got);
+        GetSymbolPath(symPath);
 
         Tokenize(symPath, ";", Dirs, [&](CString& next)
             {
