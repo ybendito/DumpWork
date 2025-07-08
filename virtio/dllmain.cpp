@@ -731,45 +731,228 @@ protected:
         m_Control->OutputVaList(DEBUG_OUTPUT_NORMAL, Format, list);
         va_end(list);
     }
-    void GetTypeName(ULONG64 moduleBase, ULONG typeId, CString& Name)
+    bool GetTypeName(ULONG64 ModuleBase, ULONG TypeId, CString& TypeName)
     {
         char buffer[1024];
-        if (FAILED(m_Symbols->GetTypeName(moduleBase, typeId, buffer, sizeof(buffer), nullptr))) {
-            Name = "hard to say>";
-        } else {
-            Name = buffer;
+        if (FAILED(m_Symbols->GetTypeName(ModuleBase, TypeId, buffer, sizeof(buffer), nullptr))) {
+            return false;
         }
+        TypeName = buffer;
+        return true;
     }
-    bool ResolveSymbol(LPCSTR Name, ULONG& Size, CString& Type, ULONG64& Offset)
+
+    // sets only address, type & typeId, size
+    // flags we need to guess
+    // description is created based on guessed flags
+    bool ResolveSymbol(LPCSTR Name, CFieldInfo& Out)
     {
         CString sFullName;
+        CString Type;
         ULONG64 moduleBase;
-        ULONG typeId;
+        FIELD_INFO info = {};
+
+        info.fName = (PUCHAR)Name;
+
         if (strchr(Name, '!')) {
             sFullName = Name;
         }
         else {
             sFullName.Format("%s!%s", m_Module.GetString(), Name);
         }
-        m_Result = m_Symbols->GetOffsetByName(sFullName, &Offset);
+
+        m_Result = m_Symbols->GetOffsetByName(sFullName, &info.address);
         if (FAILED(m_Result)) {
             Output("Can't find %s, error %X\n", sFullName.GetString(), m_Result);
             return false;
         }
-        m_Result = m_Symbols->GetSymbolTypeId(sFullName, &typeId, &moduleBase);
+
+        m_Result = m_Symbols->GetSymbolTypeId(sFullName, &info.TypeId, &moduleBase);
         if (FAILED(m_Result)) {
             Type = "<unknown>";
             return true;
-
         }
-        GetTypeName(moduleBase, typeId, Type);
+        UpdateDescription(moduleBase, info);
 
-        m_Result = m_Symbols->GetTypeSize(moduleBase, typeId, &Size);
-        if (FAILED(m_Result)) {
-            Output("Can't get size of %, error %X\n", Name, m_Result);
-        }
+        Out = info;
+
+        UpdateInfo(moduleBase, Out);
+
         return true;
     }
+
+#if 0
+    void ATL_NOINLINE UpdateTag(ULONG64 ModuleBase, FIELD_INFO& info)
+    {
+        ULONG val[256];
+        UINT used = 0;
+        HANDLE magic = HANDLE((ULONG_PTR)0xf0f0f0f0);
+#if 0
+        if (!m_SymHandle) {
+            CString symPath;
+            GetSymbolPath(symPath);
+            if (!SymInitialize(this, symPath, false)) {
+                return;
+            }
+            m_SymHandle = this;
+            ULONG64 res = SymLoadModule64(m_SymHandle, NULL, NULL, m_Module, 0, 0);
+            LOG("SymLoadModule: %p, known module base %p", (PVOID)res, (PVOID)ModuleBase);
+        }
+#endif
+        memset(val, 0xff, sizeof(val));
+        if (!SymGetTypeInfo(magic, ModuleBase, info.TypeId, TI_GET_SYMTAG, val)) {
+            LOG("Can't get tag of %s", info.fName);
+            return;
+        }
+        enum SymTagEnum tag = (enum SymTagEnum)val[0];
+        for (UINT i = 0; i < ARRAYSIZE(val); ++i) {
+            if (val[i] != 0xffffffff) {
+                used = i + 1;
+            }
+        }
+        LOG("Tag of %s: %d(%s), used %d on stack", info.fName, val[0], Name<enum SymTagEnum>(val[0]), used);
+    }
+#endif
+
+    void ATL_NOINLINE UpdateDescription(ULONG64 ModuleBase, FIELD_INFO& info, bool Force = false)
+    {
+        if (Force) {
+            info.fPointer = info.fArray = info.fStruct = 0;
+        }
+        if (info.fPointer) {
+            info.size = sizeof(PVOID);
+            return;
+        }
+        if (info.fArray || info.fStruct) {
+            return;
+        }
+        // nothing set
+        CString typeName;
+        CFieldsArray fields;
+
+        if (GetTypeName(ModuleBase, info.TypeId, typeName) &&
+            QueryStructField(typeName, "*", fields) &&
+            fields.GetSize()) {
+                info.fStruct = 1;
+                return;
+        }
+        if (typeName.IsEmpty()) {
+            return;
+        }
+        if (typeName.ReverseFind('*') == (typeName.GetLength() - 1)) {
+            info.fPointer = 1;
+            info.size = sizeof(PVOID);
+        }
+    }
+
+    void UpdateInfo(ULONG64 ModuleBase, CFieldInfo& Out, bool IsArrayMember = false, UINT Index = 0)
+    {
+        FIELD_INFO& info = Out;
+        CString typeName;
+        if (!GetTypeName(ModuleBase, info.TypeId, typeName)) {
+            typeName = "<hard to say>";
+        }
+        Out.Type(typeName);
+
+        m_Result = m_Symbols->GetTypeSize(ModuleBase, info.TypeId, &info.size);
+        if (FAILED(m_Result)) {
+            Output("Can't get size of %s, error %X\n", Out.Name(), m_Result);
+            return;
+        }
+        if (!IsArrayMember) {
+            return;
+        }
+
+        CString typeOfEntry = Out.Type();
+        INT pos = typeOfEntry.Find('[');
+        if (pos <= 0) {
+            // the type of Out is not an array
+            pos = typeOfEntry.ReverseFind('*');
+            if (pos <= 0) {
+                // the type of Out is not an pointer
+                return;
+            }
+            // TODO:
+            // we need to dereference the pointer but only if
+            // the address is an absolute address
+        }
+        typeOfEntry.SetAt(pos, 0);
+#if 1
+        LOG("Examining typeId of %s", typeOfEntry.GetString());
+        m_Result = m_Symbols->GetTypeId(ModuleBase, typeOfEntry, &info.TypeId);
+        if (FAILED(m_Result)) {
+            Out.Type("<hard to say>");
+            info.size = 0;
+            return;
+        }
+        Out.Type(typeOfEntry);
+        m_Result = m_Symbols->GetTypeSize(ModuleBase, info.TypeId, &info.size);
+        if (FAILED(m_Result)) {
+            Output("Can't get size of type %s, error %X\n", typeOfEntry.GetString(), m_Result);
+            info.size = 0;
+            return;
+        }
+        UpdateDescription(ModuleBase, info, true);
+        Out = CFieldInfo(info);
+#else
+        CFieldsArray Fields;
+        if (!QueryStructField(typeOfEntry, "", Fields)) {
+            return;
+        }
+        // address & name is not set
+        Fields[0].Name(Out.Name());
+        ((FIELD_INFO *)Fields[0])->address = info.address;
+        Out = Fields[0];
+#endif
+        if (Index) {
+            Out.AdjustOffset(Out.Size() * Index);
+        }
+    }
+
+    // Path[0] = type or name of Base, for visibility only
+    // Base might be with (context or resolved) or
+    // without address (when only type is given)
+    bool TraverseToField(CFieldInfo& Base, CStringArray& Path)
+    {
+        CString type = Base.Type();
+        CString combined = Path[0];
+        ULONG size = 0;
+        bool bOK = true;
+        Output("%s:(@0x%p) of %d %s (%s)\n", Path[0].GetString(), (PVOID)Base.Offset(),
+            Base.Size(), Base.Type(), Base.Description());
+        for (UINT i = 1; i < Path.GetSize(); ++i) {
+            LOG("Looking for %s.%s", type.GetString(), Path[i].GetString());
+            CFieldsArray fields;
+            if (!QueryStructField(type, Path[i], fields)) {
+                bOK = false;
+                break;
+            }
+            for (UINT k = 0; k < fields.GetCount(); ++k) {
+                auto& f = fields[k];
+                // address is an offset in the parent structure
+                Output("%s.%s offset @%d size %d, type %s (%s)\n",
+                    combined.GetString(),
+                    f.Name(),
+                    (ULONG)f.Offset(),
+                    f.Size(),
+                    f.Type(),
+                    f.Description());
+                if (fields.GetCount() == 1) {
+                    // one field of interest
+                    // TODO - adjust offset (incl. *() and [])
+                    // offset += f.Offset();
+                    size = f.Size();
+                    type = f.Type();
+                    combined.AppendFormat(".%s", f.Name());
+                }
+            }
+            if (fields.GetCount() > 1) {
+                bOK = false;
+                break;
+            }
+        }
+        return bOK;
+    }
+
 protected:
     CComPtr<IDebugControl> m_Control;
     CComPtr<IDebugClient>  m_Client;
@@ -799,45 +982,68 @@ protected:
         }
         Result = GetFieldData((ULONG_PTR)Context, m_MainContext, FieldName, Length, Buffer);
     }
-    bool GetContextFieldProperties(LPCSTR FieldName, CFieldInfo& Info)
+
+    // this could be one of more fields depending on FieldName
+    bool GetContextFieldProperties(LPCSTR FieldName, /*OUT*/ CFieldsArray& Fields)
     {
-        return GetStructFieldProperties(m_MainContext, FieldName, Info);
-    }
-    bool GetStructFieldProperties(LPCSTR StructName, LPCSTR FieldName, CFieldInfo& Info)
-    {
-        return QueryStructField(
-            StructName,
-            FieldName,
-            [&](const CFieldInfo& Field) { Info = Field; });
+        return QueryStructField(m_MainContext, FieldName, Fields);
     }
 
-    template <typename TCallback> bool QueryStructField(
-        LPCSTR StructName,
-        LPCSTR FieldName,
-        TCallback Callback)
+    bool QueryStruct(LPCSTR StructName, /*OUT*/ CFieldInfo& Field, ULONG64 Offset = 0)
     {
-        CArray<CFieldInfo> fields;
+        CFieldsArray fields;
+        if (QueryStructField(StructName, "", fields) && fields.GetCount() == 1) {
+            Field = fields[0];
+            ((FIELD_INFO*)Field)->address = Offset;
+            return true;
+        }
+        return false;
+    }
+
+    bool QueryStructField(LPCSTR StructName, LPCSTR FieldName, CFieldsArray& Fields)
+    {
+        bool fArrayMember = false;
+        bool fStructArray = false;
+        UINT index = 0;
+        INT pos;
+        CString type, name;
+
+        // remove '[]' if present in Struct
+        type = StructName;
+        pos = type.Find('[');
+        if (pos > 0) {
+            type.SetAt(pos, 0);
+            // currently nothying to do with it
+            fStructArray = true;
+        }
+        name = FieldName;
+        pos = name.Find('[');
+        if (pos > 0) {
+            index = atoi(name.GetString() + pos + 1);
+            name.SetAt(pos, 0);
+            fArrayMember = true;
+        }
 
         PSYM_DUMP_FIELD_CALLBACK callback =
             [](FIELD_INFO* Field, PVOID UserContext) -> ULONG
         {
-            decltype(fields)* pFields = (decltype(fields)*)UserContext;
-            LOG("Field callback called for %s", Field->fName);
+            CFieldsArray* pFields = (CFieldsArray *)UserContext;
+            LOG("Field callback called for %s, address %p", Field->fName, (PVOID)Field->address);
             CFieldInfo f(*Field);
             pFields->Add(f);
             return 0;
         };
 
         FIELD_INFO flds = {};
-        flds.fName = (PUCHAR)FieldName;
-        flds.fOptions = DBG_DUMP_FIELD_RETURN_ADDRESS;
+        flds.fName = (PUCHAR)name.GetString();
+        flds.fOptions = DBG_DUMP_FIELD_RETURN_ADDRESS | DBG_DUMP_FIELD_FULL_NAME;
         flds.fieldCallBack = callback;
 
         SYM_DUMP_PARAM Sym = {};
         Sym.size = sizeof(Sym);
-        Sym.sName = (PUCHAR)StructName;
+        Sym.sName = (PUCHAR)type.GetString();
         Sym.Options = DBG_DUMP_NO_PRINT | DBG_DUMP_CALL_FOR_EACH;
-        Sym.Context = &fields;
+        Sym.Context = &Fields;
         Sym.nFields = 1;
         Sym.Fields = &flds;
 
@@ -845,18 +1051,40 @@ protected:
             Sym.nFields = 0;
             Sym.CallbackRoutine = callback;
         }
+        if (*FieldName == 0) {
+            Sym.nFields = 0;
+            Sym.CallbackRoutine = callback;
+            Sym.Options &= ~DBG_DUMP_CALL_FOR_EACH;
+        }
 
         ULONG RetVal = Ioctl(IG_DUMP_SYMBOL_INFO, &Sym, Sym.size);
         if (RetVal) {
-            Output("Can't get info of %s.%s, error %d(%s)\n", FieldName, StructName, RetVal, Name<eSYMBOL_ERROR>(RetVal));
+            Output("Can't get info of %s.%s, error %d(%s)\n", StructName, FieldName, RetVal, Name<eSYMBOL_ERROR>(RetVal));
             return false;
         }
 
-        for (UINT i = 0; i < fields.GetCount(); ++i) {
-            CString type;
-            GetTypeName(Sym.ModBase, FIELD_INFO(fields[i]).TypeId, type);
-            fields[i].Type(type);
-            Callback(fields[i]);
+        for (UINT i = 0; i < Fields.GetCount(); ++i) {
+            if (fArrayMember) {
+                // return original name with [...]
+                Fields[i].Name(FieldName);
+            }
+            UpdateInfo(Sym.ModBase, Fields[i], fArrayMember, index);
+        }
+
+        if (*FieldName == 0 && Fields.GetCount() == 0) {
+            FIELD_INFO info = {};
+            // this field is sometimes set (for ex. PPARANDIS_ADAPTER)
+            info.fPointer = Sym.fPointer;
+            info.fArray = Sym.fArray;
+            info.fConstant = Sym.fConstant;
+            info.fStruct = Sym.fStruct;
+            info.TypeId = Sym.TypeId;
+            info.size = Sym.TypeSize;
+            info.fName = (PUCHAR)StructName;
+            UpdateDescription(Sym.ModBase, info);
+            CFieldInfo f(info);
+            UpdateInfo(Sym.ModBase, f);
+            Fields.Add(f);
         }
 
         return true;
@@ -939,12 +1167,9 @@ public:
             }
         }
     }
+
     void query(PCSTR Args)
     {
-        if (!StaticData.Adapter) {
-            Output("Adapter not selected, use 'mp' first\n");
-            return;
-        }
         struct
         {
             PCSTR alias;
@@ -952,7 +1177,10 @@ public:
         } aliases[] =
         {
             { "queues", "nPathBundles" },
-            { "tx0", "pPathBundles->txPath" },
+            { "tx0", "pPathBundles[0].txPath" },
+            { "tx1", "pPathBundles[1].txPath" },
+            { "tx2", "pPathBundles[2].txPath" },
+            { "tx3", "pPathBundles[3].txPath" },
         };
         CStringArray params;
         ULONG size = 0;
@@ -963,10 +1191,30 @@ public:
             Output("Options:\n");
             Output("   e    evaluate as is\n");
             Output("   g    read global variable\n");
+            Output("   t    traverse from type to fields\n");
             Output("   d    read as dword or less\n");
             Output("   p    read as pointer\n");
             Output("   s    get size, offset, type\n");
+            Output("   a    get size, offset, type then read\n");
             return;
+        }
+
+        if (!StaticData.Adapter) {
+            Output("Adapter not selected, trying 'mp' first\n");
+            mp();
+        }
+        if (!StaticData.Adapter && params[0].FindOneOf("sadp") >= 0) {
+            Output("Adapter context required for this command\n");
+            return;
+        }
+
+        CStringArray names;
+        CFieldInfo base;
+        if (params[1].Find('.') > 0) {
+            Tokenize(params[1], ".", names, [](CString& Next) { return true; });
+        }
+        else {
+            names.Add(params[1]);
         }
 
         if (!params[0].CompareNoCase("e")) {
@@ -975,17 +1223,13 @@ public:
         }
 
         if (!params[0].CompareNoCase("s") || !params[0].CompareNoCase("a")) {
-            CFieldInfo info;
-            if (!GetContextFieldProperties(params[1], info)) {
-                return;
-            }
-            Output("%s @%p, size %d, type %s (%s)\n",
-                params[1].GetString(),
-                (PVOID)(info.Offset() + (ULONG64)StaticData.Adapter),
-                info.Size(),
-                info.Type(),
-                info.Description());
-            size = info.Size();
+            names.InsertAt(0, m_MainContext);
+            QueryStruct(m_MainContext, base, (ULONG64)StaticData.Adapter);
+            TraverseToField(base, names);
+
+            // TODO
+            // size = info.Size();
+
             if (!params[0].CompareNoCase("s")) {
                 return;
             }
@@ -1005,56 +1249,12 @@ public:
             return;
         }
 
-        if (!params[0].CompareNoCase("g") && m_Symbols) {
-            ULONG64 offset = 0;
-            CString type;
-            CStringArray names;
-            if (params[1].Find('.') > 0) {
-                Tokenize(params[1], ".", names, [](CString& Next) { return true; });
-            } else {
-                names.Add(params[1]);
-            }
-            if (ResolveSymbol(names[0], size, type, offset)) {
-                Output("%s: %p of %d(%s)\n", names[0].GetString(), (PVOID)offset, size, type.GetString());
-                CString combined = names[0];
-                for (UINT i = 1; i < names.GetSize(); ++i) {
-                    LOG("Looking for %s.%s", type.GetString(), names[i].GetString());
-                    bool multiple = *names[i].GetString() == '*';
-                    QueryStructField(
-                        type,
-                        names[i],
-                        [&](const CFieldInfo& F)
-                        {
-                            const FIELD_INFO* f = F;
-                            // address is an offset in the parent structure
-                            if (!multiple) {
-                                offset += f->address;
-                                size = f->size;
-                                combined += '.';
-                                combined += (LPCSTR)f->fName;
-                                type = F.Type();
-                                Output("%s @%p size %d, type %s (%s)\n",
-                                    combined.GetString(),
-                                    (PVOID)offset,
-                                    f->size,
-                                    F.Type(),
-                                    F.Description());
-                            }
-                            else
-                            {
-                                Output("%s.%s offset @%d size %d, type %s (%s)\n",
-                                    combined.GetString(),
-                                    (LPCSTR)f->fName,
-                                    (ULONG)f->address,
-                                    f->size,
-                                    F.Type(),
-                                    F.Description());
-                            }
-                        }
-                    );
-                }
-            }
-            return;
+        if (!params[0].CompareNoCase("g") && ResolveSymbol(names[0], base)) {
+            TraverseToField(base, names);
+        }
+
+        if (!params[0].CompareNoCase("t") && QueryStruct(names[0], base)) {
+            TraverseToField(base, names);
         }
 
         if (size) {
