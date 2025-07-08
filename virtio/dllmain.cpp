@@ -792,6 +792,11 @@ protected:
     }
     void GetDataFromContextField(PVOID Context, LPCSTR FieldName, PVOID Buffer, ULONG Length, ULONG& Result)
     {
+        if (!HasEAPI()) {
+            LOG("WDBG API is not available!");
+            Result = INCORRECT_VERSION_INFO;
+            return;
+        }
         Result = GetFieldData((ULONG_PTR)Context, m_MainContext, FieldName, Length, Buffer);
     }
     bool GetContextFieldProperties(LPCSTR FieldName, CFieldInfo& Info)
@@ -1082,8 +1087,6 @@ protected:
     }
     bool GetAdapterField(PVOID Context, LPCSTR FieldName, PVOID Buffer, ULONG Length)
     {
-        if (!HasEAPI())
-            return false;
         LOG("Getting (%p)->%s", Context, FieldName);
         ULONG res;
         GetAdapterDataSafe(Context, FieldName, Buffer, Length, res);
