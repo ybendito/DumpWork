@@ -895,11 +895,9 @@ protected:
             pos = typeOfEntry.ReverseFind('*');
             if (pos <= 0) {
                 // the type of Out is not an pointer
+                Output("Type %s can't be indexed\n", Out.Type());
                 return;
             }
-            // TODO:
-            // we need to dereference the pointer but only if
-            // the address is an absolute address
         }
         typeOfEntry.SetAt(pos, 0);
 #if 1
@@ -910,7 +908,6 @@ protected:
             info.size = 0;
             return;
         }
-        Out.Type(typeOfEntry);
         m_Result = m_Symbols->GetTypeSize(ModuleBase, info.TypeId, &info.size);
         if (FAILED(m_Result)) {
             Output("Can't get size of type %s, error %X\n", typeOfEntry.GetString(), m_Result);
@@ -919,6 +916,7 @@ protected:
         }
         UpdateDescription(ModuleBase, info, true);
         Out = CFieldInfo(info);
+        Out.Type(typeOfEntry);
 #else
         CFieldsArray Fields;
         if (!QueryStructField(typeOfEntry, "", Fields)) {
@@ -1029,9 +1027,9 @@ protected:
     bool QueryStruct(LPCSTR StructName, /*OUT*/ CFieldInfo& Field, ULONG64 Offset = 0)
     {
         CFieldsArray fields;
-        if (QueryStructField(StructName, "", fields) && fields.GetCount() == 1) {
+        ADDRESS_INFO address(Offset);
+        if (QueryStructField(StructName, "", fields, &address) && fields.GetCount() == 1) {
             Field = fields[0];
-            ((FIELD_INFO*)Field)->address = Offset;
             return true;
         }
         return false;
@@ -1044,6 +1042,7 @@ protected:
         UINT index = 0;
         INT pos;
         CString type, name;
+        ULONG64 address = Address ? Address->Address : 0;
 
         // remove '[]' if present in Struct
         type = StructName;
@@ -1101,10 +1100,29 @@ protected:
         }
 
         for (UINT i = 0; i < Fields.GetCount(); ++i) {
+            FIELD_INFO& info = Fields[i];
+            if (address && !Sym.addr) {
+                info.address += address;
+            }
+            FieldMarkReal(info, Address ? Address->IsReal : false);
+
             if (fArrayMember) {
                 // return original name with [...]
                 Fields[i].Name(FieldName);
             }
+            if (Fields.GetCount() == 1 && Address) {
+                // dereference if this is a pointer
+                if (fArrayMember && Fields[i].IsPointer()) {
+                    if (!Fields[i].IsReal() || !ReadMemory(info.address, &info.address, sizeof(info.address), NULL)) {
+                        info.address = 0;
+                        FieldMarkReal(info, false);
+                    }
+                }
+                Address->Address = info.address;
+                Address->IsReal = Fields[i].IsReal();
+            }
+            // set the type name
+            // if needed: dereference the type and adjust the pointer
             UpdateInfo(Sym.ModBase, Fields[i], fArrayMember, index);
         }
 
