@@ -870,7 +870,7 @@ protected:
         }
     }
 
-    void UpdateInfo(ULONG64 ModuleBase, CFieldInfo& Out, bool IsArrayMember = false, UINT Index = 0)
+    void ATL_NOINLINE UpdateInfo(ULONG64 ModuleBase, CFieldInfo& Out, bool IsArrayMember = false, UINT Index = 0)
     {
         FIELD_INFO& info = Out;
         CString typeName;
@@ -1037,7 +1037,7 @@ protected:
         return false;
     }
 
-    bool QueryStructField(LPCSTR StructName, LPCSTR FieldName, CFieldsArray& Fields)
+    bool ATL_NOINLINE QueryStructField(LPCSTR StructName, LPCSTR FieldName, CFieldsArray& Fields, ADDRESS_INFO *Address = nullptr)
     {
         bool fArrayMember = false;
         bool fStructArray = false;
@@ -1062,7 +1062,7 @@ protected:
         }
 
         PSYM_DUMP_FIELD_CALLBACK callback =
-            [](FIELD_INFO* Field, PVOID UserContext) -> ULONG
+            [](FIELD_INFO* Field, PVOID UserContext) -> ULONG ATL_NOINLINE
         {
             CFieldsArray* pFields = (CFieldsArray *)UserContext;
             LOG("Field callback called for %s, address %p", Field->fName, (PVOID)Field->address);
