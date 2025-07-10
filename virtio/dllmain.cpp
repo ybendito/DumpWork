@@ -438,6 +438,90 @@ struct ADDRESS_INFO
     bool IsReal;
 };
 
+class CPureParser
+{
+public:
+    virtual void Process(ULONG64 Root, LPCSTR ListType) = 0;
+};
+
+template <typename TParam>
+class CBasicParser : public CPureParser
+{
+protected:
+    CBasicParser(TParam Parameter) : m_Parameter(Parameter) {}
+    void Process(ULONG64 Root, LPCSTR ListType) override
+    {
+        Worker(Root, ListType);
+    }
+    virtual void Worker(ULONG64, LPCSTR) = 0;
+    TParam m_Parameter;
+};
+
+static auto DummyFunctor = [](ULONG64, LPCSTR) {};
+class CDummyParser : public CBasicParser<int>
+{
+public:
+    CDummyParser() : CBasicParser(0) {}
+protected:
+    void Worker(ULONG64, LPCSTR) override {};
+};
+
+static CDummyParser DummyParser;
+
+class CListParser : public CBasicParser<IDebugControl3 *>
+{
+public:
+    CListParser(IDebugControl3 *p) : CBasicParser(p) {}
+    void Worker(ULONG64 Root, LPCSTR ListType) override
+    {
+        CString listType = ListType;
+        CString entryType;
+        ULONG offset;
+
+        LOG("%s: @%p %s", __FUNCTION__, (PVOID)Root, ListType);
+
+        int found = listType.Find('<');
+        if (found > 0) {
+            int end = listType.FindOneOf(">,");
+            if (end > found)
+            {
+                LOG("%s: from %d to %d", __FUNCTION__, found, end);
+                entryType = listType.Mid(found + 1, end - found - 1);
+            }
+        }
+        if (entryType.IsEmpty()) {
+            LOG("%s: entry type not recognized", __FUNCTION__);
+            return;
+        }
+        if (GetFieldOffset(entryType, "m_ListEntry", &offset)) {
+            LOG("%s: type %s is not list member", __FUNCTION__, entryType.GetString());
+            return;
+        }
+        auto readEntry = [](ULONG64 Address) -> LIST_ENTRY
+        {
+            LIST_ENTRY e;
+            ReadMemory(Address, &e, sizeof(e), NULL);
+            return e;
+        };
+
+        LIST_ENTRY localRoot, localCurrent;
+        ULONG64 targetCurrent, targetNext;
+        localRoot = readEntry(Root);
+        for (targetCurrent = (ULONG64)localRoot.Flink; targetCurrent != Root; targetCurrent = targetNext)
+        {
+            localCurrent = readEntry(targetCurrent);
+            targetNext = (ULONG64)localCurrent.Flink;
+            ULONG64 object = targetCurrent - offset;
+            m_Parameter->ControlledOutput(
+                DEBUG_OUTCTL_DML,
+                DEBUG_OUTPUT_NORMAL,
+                "<link cmd=\"?? (%s *)0x%p\">%s at %p</link>\n",
+                entryType.GetString(), (PVOID)object,
+                entryType.GetString(), (PVOID)object);
+        }
+    }
+};
+
 class CDebugExtension
 {
 public:
