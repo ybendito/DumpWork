@@ -358,6 +358,19 @@ public:
     }
 };
 
+#define FIELD_FLAG_REAL     0x80000000
+
+static void FieldMarkReal(FIELD_INFO& Field, bool Real)
+{
+    Field.fOptions &= ~FIELD_FLAG_REAL;
+    Field.fOptions |= Real ? FIELD_FLAG_REAL : 0;
+}
+
+static bool FieldIsReal(const FIELD_INFO& Field)
+{
+    return (Field.fOptions & 0x80000000) != 0;
+}
+
 class CFieldInfo
 {
 public:
@@ -389,6 +402,8 @@ public:
     ULONG64 Offset() const { return m_Info.address; }
     ULONG Size() const { return m_Info.size; }
     void AdjustOffset(LONG Change) { m_Info.address += Change; }
+    bool IsReal() const { return FieldIsReal(m_Info); }
+    bool IsPointer() const { return m_Info.fPointer; }
 private:
     FIELD_INFO m_Info = {};
     CString m_Name;
@@ -411,6 +426,17 @@ private:
 };
 
 typedef CArray<CFieldInfo> CFieldsArray;
+
+struct ADDRESS_INFO
+{
+    ADDRESS_INFO(ULONG64 _Address)
+    {
+        Address = _Address;
+        IsReal = !!Address;
+    }
+    ULONG64 Address;
+    bool IsReal;
+};
 
 class CDebugExtension
 {
@@ -911,28 +937,39 @@ protected:
     // Path[0] = type or name of Base, for visibility only
     // Base might be with (context or resolved) or
     // without address (when only type is given)
-    bool TraverseToField(CFieldInfo& Base, CStringArray& Path)
+    bool ATL_NOINLINE TraverseToField(CFieldInfo& Base, CStringArray& Path)
     {
         CString type = Base.Type();
         CString combined = Path[0];
         ULONG size = 0;
         bool bOK = true;
+        ADDRESS_INFO address(Base.Offset());
         Output("%s:(@0x%p) of %d %s (%s)\n", Path[0].GetString(), (PVOID)Base.Offset(),
             Base.Size(), Base.Type(), Base.Description());
         for (UINT i = 1; i < Path.GetSize(); ++i) {
             LOG("Looking for %s.%s", type.GetString(), Path[i].GetString());
             CFieldsArray fields;
-            if (!QueryStructField(type, Path[i], fields)) {
+            if (!QueryStructField(type, Path[i], fields, &address)) {
                 bOK = false;
                 break;
             }
             for (UINT k = 0; k < fields.GetCount(); ++k) {
                 auto& f = fields[k];
+
                 // address is an offset in the parent structure
-                Output("%s.%s offset @%d size %d, type %s (%s)\n",
+                // or real virtual address of the field
+                CString sAddress;
+                if (f.IsReal()) {
+                    sAddress.Format("(@0x%p)", (PVOID)f.Offset());
+                } else {
+                    sAddress.Format("offset %d", (ULONG)f.Offset());
+                }
+                sAddress.MakeLower();
+
+                Output("%s.%s %s of %d, type %s (%s)\n",
                     combined.GetString(),
                     f.Name(),
-                    (ULONG)f.Offset(),
+                    sAddress.GetString(),
                     f.Size(),
                     f.Type(),
                     f.Description());
@@ -1081,6 +1118,8 @@ protected:
             info.TypeId = Sym.TypeId;
             info.size = Sym.TypeSize;
             info.fName = (PUCHAR)StructName;
+            info.address = address;
+            FieldMarkReal(info, Address ? Address->IsReal : false);
             UpdateDescription(Sym.ModBase, info);
             CFieldInfo f(info);
             UpdateInfo(Sym.ModBase, f);
