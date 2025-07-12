@@ -1398,16 +1398,30 @@ public:
         }
 
         if (!params[0].CompareNoCase("s") || !params[0].CompareNoCase("a")) {
+            CFieldParser parser;
+            CFieldInfo& f = parser.Info();
             names.InsertAt(0, m_MainContext);
             QueryStruct(m_MainContext, base, (ULONG64)StaticData.Adapter);
-            TraverseToField(base, names);
-
-            // TODO
-            // size = info.Size();
-
-            if (!params[0].CompareNoCase("s")) {
-                return;
+            TraverseToField(base, names, parser);
+            LARGE_INTEGER val = {};
+            switch (tolower(params[0].GetAt(0)))
+            {
+                case 's':
+                    return;
+                case 'a':
+                    if (!f.IsReal() || f.Size() > 8)
+                        break;
+                    ReadMemory(f.Offset(), &val, f.Size(), NULL);
+                    if (f.Size() > 4) {
+                        Output("%s = 0x%p\n", f.Name(), (PVOID)val.QuadPart);
+                    } else {
+                        Output("%s = 0x%x(%d)\n", f.Name(), val.LowPart, val.LowPart);
+                    }
+                    break;
+                default:
+                    break;
             }
+            return;
         }
 
         if (!params[0].CompareNoCase("l")) {
