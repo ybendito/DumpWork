@@ -1,6 +1,5 @@
 #include "stdafx.h"
 #include <WinHvPlatform.h>
-#include "winternl.h"
 
 #pragma comment(lib, "ntdll.lib")
 
