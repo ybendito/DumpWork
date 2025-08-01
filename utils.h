@@ -61,6 +61,22 @@ public:
     }
 };
 
+#if !defined(ERR)
+
+extern CMutex _logMutex;
+
+#define ERR(fmt, ...) fprintf(stderr, "DumpWork:" ## fmt ## "\n", __VA_ARGS__)
+//#define LOG(fmt, ...) fprintf(stdout, fmt ## "\n", __VA_ARGS__)
+#define LOG(fmt, ...)                                                                                                   \
+    {                                                                                                                   \
+        _logMutex.Wait();                                                                                               \
+        CStringA _s_;                                                                                                   \
+        _s_.Format(fmt, __VA_ARGS__);                                                                                   \
+        puts(_s_);                                                                                                      \
+        _logMutex.Signal();                                                                                             \
+    }
+#endif
+
 class CThreadOwner
 {
 public:
