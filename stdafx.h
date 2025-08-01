@@ -51,8 +51,6 @@
 #include <dbgeng.h>
 #include <dbghelp.h>
 
-#define ERR(fmt, ...) fprintf(stderr, "DumpWork:" ## fmt ## "\n", __VA_ARGS__)
-#define LOG(fmt, ...) fprintf(stdout, fmt ## "\n", __VA_ARGS__)
-#include "engine.h"
 #include "utils.h"
+#include "engine.h"
 #include "guids.h"
