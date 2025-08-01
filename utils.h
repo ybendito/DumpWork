@@ -1,5 +1,7 @@
 #pragma once
 
+#include <NTSecAPI.h>
+
 class CWaitableObject
 {
 public:
@@ -370,3 +372,117 @@ template<typename TFunctor> void Tokenize(CString Text, LPCSTR Delimiters, CStri
         Result.Add(next);
     } while (true);
 }
+
+class SystemInfo
+{
+public:
+    SystemInfo() : m_Info(&m_information)
+    {
+        if (!m_information.dwPageSize)
+        {
+            GetSystemInfo(&m_information);
+        }
+    }
+    const SYSTEM_INFO *m_Info;
+private:
+    static SYSTEM_INFO m_information;
+};
+
+class CMemoryMappedFile
+{
+public:
+    CMemoryMappedFile(ULONG MegaBytes, bool MapAll = true)
+    {
+        m_Size = MegaBytes * MB;
+        m_Handle = CreateFileMapping(
+            INVALID_HANDLE_VALUE,        // Pagefile-backed
+            nullptr,                     // Default security
+            PAGE_READWRITE,
+            (DWORD)((m_Size >> 32) & 0xFFFFFFFF),
+            (DWORD)(m_Size & 0xFFFFFFFF),
+            nullptr
+        );
+        if (m_Handle) {
+            if (MapAll) {
+                m_Buffer = (PCHAR)MapAndForget(false);
+            }
+        }
+        else {
+            LOG("can't create file mapping of %d MB (%lld bytes), error %d",
+                MegaBytes, m_Size, GetLastError());
+        }
+    }
+    bool MapOneByOne(bool DoTouch)
+    {
+        ULONG val = 1;
+        if (!m_Handle) {
+            return false;
+        }
+        for (size_t offset = 0; offset < m_Size; offset += AllocAlignment()) {
+            PCHAR p = (PCHAR)MapViewOfFile(m_Handle, FILE_MAP_WRITE, (ULONG)(offset >> 32), (ULONG)offset, AllocAlignment());
+            if (!p) {
+                LOG("can't map view of file at 0x%llX, error %d", offset, GetLastError());
+                return false;
+            }
+            if (DoTouch) {
+                p[0] = (char)val;
+            }
+            UnmapViewOfFile(p);
+        }
+        return true;
+    }
+    PVOID MapAndForget(bool DoTouch)
+    {
+        PVOID p = MapViewOfFile(m_Handle, FILE_MAP_WRITE, 0, 0, m_Size);
+        if (!p) {
+            LOG("can't map view of file, error %d", GetLastError());
+        }
+        if (DoTouch) {
+            Touch((PCHAR)p);
+        }
+        return p;
+    }
+    bool IsValid()
+    {
+        return m_Handle && m_Buffer;
+    }
+    ~CMemoryMappedFile()
+    {
+        if (m_Buffer) {
+            UnmapViewOfFile(m_Buffer);
+        }
+        if (m_Handle) {
+            CloseHandle(m_Handle);
+        }
+    }
+    int Poke()
+    {
+        return Touch(m_Buffer);
+    }
+private:
+    SystemInfo m_SysInfo;
+    HANDLE m_Handle;
+    PCHAR  m_Buffer = NULL;
+    ULONGLONG  m_Size = 0;
+    const ULONGLONG MB = (1024L * 1024);
+    int Touch(PCHAR Buffer)
+    {
+        ULONG val;
+        int n = 0;
+        RtlGenRandom(&val, sizeof(val));
+        ULONG location = val % PageSize();
+        for (size_t offset = 0; offset < m_Size && Buffer; offset += PageSize()) {
+            Buffer[offset + location] = (char)(val >> 24);
+            ++n;
+        }
+        return n;
+    }
+    ULONG PageSize()
+    {
+        return m_SysInfo.m_Info->dwPageSize;
+    }
+    ULONG AllocAlignment()
+    {
+        return m_SysInfo.m_Info->dwAllocationGranularity;
+    }
+};
