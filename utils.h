@@ -48,6 +48,19 @@ public:
     }
 };
 
+class CMutex : public CWaitableObject
+{
+public:
+    CMutex() : CWaitableObject(CreateMutex(NULL, false, NULL))
+    {
+
+    }
+    void Signal() override
+    {
+        ReleaseMutex(m_Handle);
+    }
+};
+
 class CThreadOwner
 {
 public:
