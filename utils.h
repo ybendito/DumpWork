@@ -461,7 +461,7 @@ public:
     }
 private:
     SystemInfo m_SysInfo;
-    HANDLE m_Handle;
+    HANDLE m_Handle = NULL;
     PCHAR  m_Buffer = NULL;
     ULONGLONG  m_Size = 0;
     const ULONGLONG MB = (1024L * 1024);
