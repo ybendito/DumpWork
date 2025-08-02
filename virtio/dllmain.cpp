@@ -629,6 +629,12 @@ protected:
             ERR("%s: Can't obtain IDebugSymbols", __FUNCTION__);
             throw;
         }
+        m_Result = m_Client.QueryInterface<IDebugDataSpaces>(&m_DataSpaces);
+        if (m_Result != S_OK) {
+            ERR("%s: Can't obtain IDebugDataSpaces", __FUNCTION__);
+            throw;
+        }
+
         // optional, do not fail if not present
         m_Result = m_Client.QueryInterface<IDebugSymbols3>(&m_Symbols3);
         if (m_Result != S_OK) {
@@ -719,7 +725,7 @@ protected:
         if (!m_Symbols3)
             return;
         VS_FIXEDFILEINFO info;
-        m_Result = m_Symbols3->GetModuleVersionInformation(Index, 0, "\\",
+        m_Result = m_Symbols3->GetModuleVersionInformation(Index, 0, "\\StringFileInfo\\FileVersion",
             &info, sizeof(info), NULL);
         if (m_Result == S_OK) {
             Output("Driver version: %d.%d.%d.%d\n",
@@ -1118,6 +1124,7 @@ protected:
     CComPtr<IDebugSymbols> m_Symbols;
     CComPtr<IDebugSymbols3> m_Symbols3;
     CComPtr<IDebugControl3> m_Control3;
+    CComPtr<IDebugDataSpaces> m_DataSpaces;
     HRESULT m_Result;
     CString m_Module;
     CString m_MainContext;
@@ -1398,6 +1405,26 @@ public:
             Output("   s    get size, offset, type\n");
             Output("   a    get size, offset, type then read\n");
             Output("   l    {path to root entry} - dump list\n");
+            Output("   k    {kd data index} [size] - ReadDebuggerData\n");
+            return;
+        }
+
+        if (!params[0].CompareNoCase("k")) {
+            ULONG index = atoi(params[1]);
+            size = sizeof(ULONG64);
+            if (params.GetCount() > 2) {
+                size = atoi(params[2]);
+                if (size == 0 || size > sizeof(ULONG64)) {
+                    size = sizeof(ULONG64);
+                }
+            }
+            ULONG64 val = 0;
+            m_Result = m_DataSpaces->ReadDebuggerData(index, &val, size, NULL);
+            if (SUCCEEDED(m_Result)) {
+                Output("Data[%d] = %p\n", index, val);
+            } else {
+                Output("ReadDebuggerData error %X\n", m_Result);
+            }
             return;
         }
 
@@ -1414,8 +1441,7 @@ public:
         CFieldInfo base;
         if (params[1].Find('.') > 0) {
             Tokenize(params[1], ".", names, [](CString& Next) { return true; });
-        }
-        else {
+        } else {
             names.Add(params[1]);
         }
 
