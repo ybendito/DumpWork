@@ -604,10 +604,10 @@ public:
     void Evaluate(LPCSTR Expression)
     {
         DEBUG_VALUE v = {};
-        ULONG remaindexIndex = 0;
-        m_Result = m_Control->Evaluate(Expression, DEBUG_VALUE_INVALID, &v, &remaindexIndex);
+        ULONG remainderIndex = 0;
+        m_Result = m_Control->Evaluate(Expression, DEBUG_VALUE_INVALID, &v, &remainderIndex);
         if (FAILED(m_Result)) {
-            Output("evaluation failed, error %X, index %d\n", m_Result, remaindexIndex);
+            Output("evaluation failed, error %X, index %d\n", m_Result, remainderIndex);
             return;
         }
         Output("received type %d(%s), value 0x%p\n", v.Type, Name<eDEBUG_VALUE_TYPE>(v.Type), (PVOID)v.I64);
