@@ -1428,13 +1428,13 @@ public:
             return;
         }
 
-        if (!StaticData.Adapter) {
+        if (!StaticData.Adapter && params[0].FindOneOf("sadp") >= 0) {
             Output("Adapter not selected, trying 'mp' first\n");
             mp();
-        }
-        if (!StaticData.Adapter && params[0].FindOneOf("sadp") >= 0) {
-            Output("Adapter context required for this command\n");
-            return;
+            if (!StaticData.Adapter) {
+                Output("Adapter context required for this command\n");
+                return;
+            }
         }
 
         CStringArray names;
