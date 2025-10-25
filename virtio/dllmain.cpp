@@ -13,7 +13,7 @@ extern "C" __declspec(dllexport) HRESULT verbose(IN PDEBUG_CLIENT Client, IN PCS
 {
     CComPtr<IDebugClient> client = Client;
     CComPtr<IDebugControl> control;
-    auto usage = [&]() { control->Output(DEBUG_OUTPUT_NORMAL, "verbose <on|off>\n"); };
+    auto usage = [&]() { control->Output(DEBUG_OUTPUT_NORMAL, "verbose <on|off>    - enable/disable extended debug output to DbgView\n"); };
     if (S_OK != client.QueryInterface<IDebugControl>(&control)) {
         return S_FALSE;
     }
@@ -685,6 +685,7 @@ protected:
     void help()
     {
         Output("findpdb <directory> - recursive find and append to symbol path\n");
+        Output("hv                  - dump Hyper-V fields\n");
         verbose(m_Client, "--help");
     }
 
@@ -941,7 +942,7 @@ protected:
 
         m_Result = m_Symbols->GetSymbolTypeId(sFullName, &info.TypeId, &moduleBase);
         if (FAILED(m_Result)) {
-            Type = "<unknown>";
+            Out = info;
             return true;
         }
         UpdateDescription(moduleBase, info);
@@ -1534,9 +1535,9 @@ public:
     }
     void help()
     {
-        Output("mp - find miniport and symbols in known places\n");
-        Output("query - read miniport field\n");
         __super::help();
+        Output("mp                  - find miniport and symbols in known places\n");
+        Output("query               - read miniport field\n");
     }
     struct CStaticData
     {
@@ -1588,6 +1589,48 @@ protected:
 // CDebugExtensionNet static data
 CDebugExtensionNet::CStaticData CDebugExtensionNet::StaticData;
 
+class CDebugExtensionHv : public CDebugExtension
+{
+public:
+    CDebugExtensionHv(PDEBUG_CLIENT Client) : CDebugExtension(Client, "nt", "DUMMY") {}
+    template <typename VALTYPE> bool GetValue(LPCSTR Name, VALTYPE& Val)
+    {
+        CFieldInfo info;
+        if (ResolveSymbol(Name, info)) {
+            ULONG read = 0;
+            ReadMemory(info.Offset(), &Val, sizeof(Val), &read);
+            if (sizeof(Val) == read) {
+                Output("%s = %X\n", Name, Val);
+                return true;
+            }
+        }
+        return false;
+    }
+    template <typename VALTYPE, typename FLAGTYPE> void DumpFlags(LPCSTR Name)
+    {
+        VALTYPE flags = 0;
+        if (GetValue<VALTYPE>(Name, flags)) {
+            auto table = FlagsTable<FLAGTYPE>(flags);
+            Output("%s", table.GetString());
+        }
+    }
+    void Dump()
+    {
+        bool b;
+        {
+            CIommuDetect d(m_Client);
+            b = d.Present();
+        }
+        Output("IOMMU %s\n", b ? "present" : "not present");
+
+        DumpFlags<ULONG, eHV_FLAG_TYPE>("HvlpFlags");
+        DumpFlags<ULONG, eHV_ENLIGHTMENT_TYPE>("HvlpEnlightenments");
+        ULONG rootFlags = 0;
+        GetValue<ULONG>("HvlpRootFlags", rootFlags);
+        UCHAR isSecureKernel = 0;
+        GetValue<UCHAR>("VslVsmEnabled", isSecureKernel);
+    }
+};
 
 extern "C" __declspec(dllexport) HRESULT help(IN PDEBUG_CLIENT Client, IN PCSTR Args)
 {
@@ -1630,6 +1673,15 @@ extern "C" __declspec(dllexport) HRESULT query(IN PDEBUG_CLIENT Client, IN PCSTR
     VERBOSE("%s: =>", __FUNCTION__);
     CDebugExtensionNet e(Client);
     e.query(Args);
+    VERBOSE("%s: <=", __FUNCTION__);
+    return S_OK;
+}
+
+extern "C" __declspec(dllexport) HRESULT hv(IN PDEBUG_CLIENT Client, IN PCSTR Args)
+{
+    VERBOSE("%s: =>", __FUNCTION__);
+    CDebugExtensionHv e(Client);
+    e.Dump();
     VERBOSE("%s: <=", __FUNCTION__);
     return S_OK;
 }
