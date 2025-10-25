@@ -358,6 +358,24 @@ public:
     }
 };
 
+class CIommuDetect : public CExternalCommandParser
+{
+public:
+    CIommuDetect(PDEBUG_CLIENT Client) :
+        CExternalCommandParser(Client, "!acpicache")
+    {}
+    bool Present()
+    {
+        Run();
+        for (UINT i = 0; i < m_Output.GetCount(); ++i) {
+            if (m_Output[i].Find("DMAR") >= 0) {
+                return true;
+            }
+        }
+        return false;
+    }
+};
+
 #define FIELD_FLAG_REAL     0x80000000
 
 static void FieldMarkReal(FIELD_INFO& Field, bool Real)
