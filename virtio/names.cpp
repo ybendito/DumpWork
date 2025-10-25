@@ -122,3 +122,134 @@ LPCSTR GetName(const enum SymTagEnum& val)
     return GET_NAME(names, val);
 }
 
+LPCSTR GetName(const eHV_FLAG_TYPE& val)
+{
+    // meaning of flags aligned per windbg 26100.4202
+    LPCSTR bits[32] = {
+        "ApicEnlightened", // 0
+        "CpuManager", // 1
+        "DynamicCpuDisabled", // 2
+        "Phase0InitDone", // 3
+        "DeprecateAutoEoi", // 4
+        "SynicAvailable", // 5
+        "VsmAvailable", // 6
+        "ExtendedProcessorMasks", // 7
+        NULL, // 8 MaxBankNumber.0
+        NULL, // 9 MaxBankNumber.1
+        NULL, // 10 MaxBankNumber.2
+        NULL, // 11 MaxBankNumber.3
+        "HypervisorPresent", // 12
+        "NoExtendedRangeFlush", // 13
+        "UseQpcBias", // 14
+        "RootScheduler", // 15
+        "PowerSchedulerQos", // 16
+        "HardwareMbecAvailable", // 17
+        "MemoryZeroingControl", // 18
+        "VpAssistPage", // 19
+        "Epf", // 20
+        "AsyncMemoryHint", // 21
+        "NoNonArchCoreSharing", // 22
+        "CoreSchedulerRequested", // 23
+        "ApicVirtualizationAvailable", // 24
+        NULL, // 25
+        NULL, // 26
+        NULL, // 27
+        NULL, // 28
+        NULL, // 29
+        NULL, // 30
+        NULL, // 31
+    };
+    if (val >= ARRAYSIZE(bits)) {
+        return NULL;
+    }
+    return bits[val];
+}
+
+#if 0
+LPCSTR GetName(const eHV_ENLIGHTMENT_TYPE& val)
+{
+    LPCSTR bits[32] = {
+        "UseHypercallForAddressSpaceSwitch", // 0
+        "UseHypercallForLocalFlush", // 1
+        "UseHypercallForRemoteFlush", // 2
+        "UseApicMsrs", // 3
+        "UseHvRegisterForReset", // 4
+        "UseRelaxedTiming", // 5
+        "?", // 6 (Old UseDmaRemapping)
+        "UseInterruptRemapping", // 7
+        "UseX2ApicMsrs", // 8
+        "DeprecateAutoEoi", // 9
+        "UseSyntheticClusterIpi", // 10
+        "UseExProcessorMasks", // 11
+        "Nested", // 12
+        "UseVirtualTlbFlush", // 13
+        "UseVmcsEnlightenments", // 14
+        "UseSyncedTimeline", // 15
+        "Unknown", // 16
+        "Unknown", // 17
+        "Unknown", // 18
+        "Unknown", // 19
+        "Unknown", // 20
+        "Unknown", // 21
+        "Unknown", // 22
+        "Unknown", // 23
+        "Unknown", // 24
+        "Unknown", // 25
+        "Unknown", // 26
+        "Unknown", // 27
+        "Unknown", // 28
+        "Unknown", // 29
+        "Unknown", // 30
+        "Unknown", // 31
+    };
+    if (val >= ARRAYSIZE(bits)) {
+        return NULL;
+    }
+    return bits[val];
+}
+#else
+LPCSTR GetName(const eHV_ENLIGHTMENT_TYPE& val)
+{
+    // reflects QEMU settings
+    // no effect: vpindex, frequencies, runtime, reenlightenment
+    // no effect: stimer, stimer_direct
+    LPCSTR bits[32] = {
+        NULL, // 0
+        NULL, // 1
+        "tlbflush", // 2
+        NULL, // 3
+        "vapic", // 4
+        "relaxed", // 5
+        "spinlock", // 6
+        NULL, // 7
+        "time", // 8
+        NULL, // 9
+        NULL, // 10
+        NULL, // 11
+        NULL, // 12
+        NULL, // 13
+        "ipi", // 14
+        NULL, // 15
+        NULL, // 16
+        NULL, // 17
+        NULL, // 18
+        NULL, // 19
+        NULL, // 20
+        NULL, // 21
+        NULL, // 22
+        NULL, // 23
+        NULL, // 24
+        NULL, // 25
+        NULL, // 26
+        NULL, // 27
+        NULL, // 28
+        NULL, // 29
+        NULL, // 30
+        NULL, // 31
+    };
+    if (val >= ARRAYSIZE(bits)) {
+        return NULL;
+    }
+    return bits[val];
+}
+#endif
