@@ -238,7 +238,9 @@ public:
                 if (ShouldTerminate(m_CumulativeWait, m_WaitTime)) {
                     Terminate();
                 } else {
-                    LOG(" pid %d(%X) is running %d ms", pi.dwProcessId, pi.dwProcessId, m_CumulativeWait);
+                    LOG(" pid %d(%X) is running %d ms, collected Out %d, Err %d",
+                        pi.dwProcessId, pi.dwProcessId, m_CumulativeWait,
+                        StdOutResult().GetLength(), StdErrResult().GetLength());
                     Flush();
                 }
             }

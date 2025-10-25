@@ -345,7 +345,7 @@ public:
     {
         for (UINT i = 0; i < m_Output.GetCount(); ++i) {
             m_Output[i].MakeLower();
-            if (m_Output[i].Find(".dmp")) {
+            if (m_Output[i].Find(".dmp") > 0) {
                 CString s = m_Output[i];
                 LOG("Found %s", s.GetString());
                 s.Delete(0, 6 + s.Find("dump:"));
@@ -921,7 +921,6 @@ protected:
     bool ResolveSymbol(LPCSTR Name, CFieldInfo& Out)
     {
         CString sFullName;
-        CString Type;
         ULONG64 moduleBase;
         FIELD_INFO info = {};
 
