@@ -91,13 +91,19 @@ class CDebugOutputCallback :
 public:
     CDebugOutputCallback(PDEBUG_CLIENT Client) : m_Client(Client)
     {
-        m_Client.QueryInterface<IDebugControl>(&m_Control);
         m_Client->GetOutputCallbacks(&m_Previous);
         m_Client->SetOutputCallbacks(this);
     }
     ~CDebugOutputCallback()
     {
         m_Client->SetOutputCallbacks(m_Previous);
+    }
+    void GetOutput(CStringArray& Arr)
+    {
+        Arr.RemoveAll();
+        for (int i = 0; i < m_Output.GetCount(); ++i) {
+            Arr.Add(m_Output[i]);
+        }
     }
 protected:
     STDMETHOD(QueryInterface)(
@@ -129,13 +135,6 @@ protected:
 protected:
     CStringArray m_Output;
     CComPtr<IDebugClient> m_Client;
-    CComPtr<IDebugControl> m_Control;
-    void CombineOutput(CString& Combined)
-    {
-        for (int i = 0; i < m_Output.GetCount(); ++i) {
-            Combined += m_Output[i];
-        }
-    }
 private:
     PDEBUG_OUTPUT_CALLBACKS m_Previous = NULL;
     STDMETHOD_(ULONG, AddRef)(THIS) override {
@@ -146,17 +145,18 @@ private:
     }
 };
 
-class CExternalCommandParser : public CDebugOutputCallback
+class CExternalCommandParser
 {
 public:
     CExternalCommandParser(PDEBUG_CLIENT Client, LPCSTR Command) :
-        CDebugOutputCallback(Client),
-        m_Command(Command)
+        m_Command(Command), m_Client(Client)
     {
-        // at this point the output callback is set, previous one is saved
+        m_Client.QueryInterface<IDebugControl>(&m_Control);
     }
     virtual HRESULT Run()
     {
+        CDebugOutputCallback cb(m_Client);
+        // at this point the output callback is set, previous one is saved
         bool saveVerbose = bVerbose;
         if (m_Verbose) {
             bVerbose = true;
@@ -165,11 +165,21 @@ public:
         if (m_Verbose) {
             bVerbose = saveVerbose;
         }
+        cb.GetOutput(m_Output);
         return res;
     }
 protected:
+    CComPtr<IDebugClient> m_Client;
+    CComPtr<IDebugControl> m_Control;
     CString m_Command;
     void BeVerbose() { m_Verbose = true; }
+    void CombineOutput(CString& Combined)
+    {
+        for (int i = 0; i < m_Output.GetCount(); ++i) {
+            Combined += m_Output[i];
+        }
+    }
+    CStringArray m_Output;
 private:
     bool m_Verbose = false;
 };
@@ -1615,11 +1625,8 @@ public:
     }
     void Dump()
     {
-        bool b;
-        {
-            CIommuDetect d(m_Client);
-            b = d.Present();
-        }
+        CIommuDetect d(m_Client);
+        bool b = d.Present();
         Output("IOMMU %s\n", b ? "present" : "not present");
 
         DumpFlags<ULONG, eHV_FLAG_TYPE>("HvlpFlags");
