@@ -722,9 +722,10 @@ protected:
     }
     void help()
     {
+        verbose(m_Client, "--help");
         Output("findpdb <directory> - recursive find and append to symbol path\n");
         Output("hv                  - dump Hyper-V fields\n");
-        verbose(m_Client, "--help");
+        Output("cn                  - get computer name\n");
     }
 
     void TriggerSymbolLoading(LPCSTR ModuleName)
