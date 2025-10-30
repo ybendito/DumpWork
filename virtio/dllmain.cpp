@@ -386,6 +386,26 @@ public:
     }
 };
 
+class CRegCommand : public CExternalCommandParser
+{
+public:
+    CRegCommand(PDEBUG_CLIENT Client, LPCSTR Command) :
+        CExternalCommandParser(Client, "!reg ")
+    {
+        m_Command += Command;
+    }
+    CString GetString()
+    {
+        Run();
+        for (UINT i = 0; i < m_Output.GetCount(); ++i) {
+            if (m_Output[i].Find("REG_SZ") >= 0) {
+                return m_Output[i];
+            }
+        }
+        return "";
+    }
+};
+
 #define FIELD_FLAG_REAL     0x80000000
 
 static void FieldMarkReal(FIELD_INFO& Field, bool Real)
@@ -601,7 +621,15 @@ public:
         CTestCommand cmd(m_Client, Command);
         cmd.Run();
     }
-
+    void cn()
+    {
+        CString s;
+        CRegCommand cmd(m_Client, "q \\registry\\machine\\System\\ControlSet001\\Control\\ComputerName\\ActiveComputerName");
+        s = cmd.GetString();
+        if (!s.IsEmpty()) {
+            Output("%s\n", s.GetString());
+        }
+    }
     void findpdb(LPCSTR TopDir)
     {
         CStringArray dirs;
@@ -1691,6 +1719,15 @@ extern "C" __declspec(dllexport) HRESULT hv(IN PDEBUG_CLIENT Client, IN PCSTR Ar
     VERBOSE("%s: <=", __FUNCTION__);
     return S_OK;
 }
+
+extern "C" __declspec(dllexport) HRESULT cn(IN PDEBUG_CLIENT Client, IN PCSTR Args)
+{
+    VERBOSE("%s: =>", __FUNCTION__);
+    CDebugExtensionNet e(Client);
+    e.cn();
+    return S_OK;
+}
+
 
 #if !THIS_IS_WINDBG_EXTENSION
 
