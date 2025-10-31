@@ -375,6 +375,21 @@ template<typename TFunctor> void Tokenize(CString Text, LPCSTR Delimiters, CStri
     } while (true);
 }
 
+int FORCEINLINE CountLines(const CString& String)
+{
+    int n = 0, nFiles = 0;
+    while (n >= 0) {
+        CString next = String.Tokenize("\r\n", n);
+        next.Trim();
+        if (next.IsEmpty()) {
+            continue;
+        }
+        nFiles++;
+    }
+    return nFiles;
+}
+
+
 class SystemInfo
 {
 public:

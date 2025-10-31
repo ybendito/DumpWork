@@ -886,6 +886,7 @@ protected:
             r.SetIntermediateWait(3000);
             r.RunProcess(cmdLine);
             int n = 0;
+            Output("%d files to check\n", CountLines(r.StdOutResult()));
             do {
                 CString next = r.StdOutResult().Tokenize("\r\n", n);
                 next.Trim();
