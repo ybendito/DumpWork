@@ -196,6 +196,7 @@ public:
             m_Redirect = false;
         }
     }
+    void SetHidden() { m_Hidden = true; }
     void SetIntermediateWait(ULONG Millies)
     {
         m_IntermediateWait = Millies;
@@ -218,7 +219,11 @@ public:
             si.hStdInput = m_StdIn.ReadHandle();
             si.dwFlags |= STARTF_USESTDHANDLES;
         }
-
+        if (m_Hidden)
+        {
+            si.wShowWindow = SW_HIDE;
+            si.dwFlags |= STARTF_USESHOWWINDOW;
+        }
         LOG(" Running %s ...", CommandLine.GetString());
         if (CreateProcess(NULL, CommandLine.GetBuffer(), NULL, NULL, m_Redirect, CREATE_SUSPENDED, NULL, _T("."), &si, &pi))
         {
@@ -279,6 +284,7 @@ protected:
     ULONG m_IntermediateWait = 0;
     ULONG m_CumulativeWait = 0;
     bool  m_Redirect;
+    bool  m_Hidden = false;
     virtual bool ShouldTerminate(ULONG CumulativeWait, ULONG WaitLimit)
     {
         return CumulativeWait >= WaitLimit;

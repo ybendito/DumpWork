@@ -884,6 +884,7 @@ protected:
             CString cmdLine;
             cmdLine.Format("cmd.exe /c dir /s /b %s\\%s.pdb", dirs.GetAt(i).GetString(), Name);
             r.SetIntermediateWait(3000);
+            r.SetHidden();
             r.RunProcess(cmdLine);
             int n = 0;
             Output("%d files to check\n", CountLines(r.StdOutResult()));
