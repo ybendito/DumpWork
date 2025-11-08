@@ -229,7 +229,24 @@ public:
     CTestCommand(PDEBUG_CLIENT Client, LPCSTR Command) :
         CExternalCommandParser(Client, Command)
     {
+        LOG("%s", __FUNCTION__);
         BeVerbose();
+    }
+protected:
+    void OpenOutputFile(CFile& File, CString& Command) override
+    {
+        if (Command.Find("-f ") != 0) {
+            return;
+        }
+        Command.Delete(0, 3);
+
+        CDumpNameGetter getter(m_Client);
+        getter.Run();
+        CString filename = getter.Parse();
+        filename += "\\command-output.txt";
+        if (!File.Open(filename, CFile::modeWrite | CFile::modeCreate | CFile::shareDenyWrite)) {
+            LOG("%s: can't open output file", __FUNCTION__);
+        }
     }
 };
 
