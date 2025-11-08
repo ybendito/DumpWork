@@ -164,7 +164,8 @@ public:
     }
     virtual HRESULT Run()
     {
-        CDebugOutputCallback cb(m_Client);
+        OpenOutputFile(m_File, m_Command);
+        CDebugOutputCallback cb(m_Client, m_File);
         // at this point the output callback is set, previous one is saved
         bool saveVerbose = bVerbose;
         if (m_Verbose) {
@@ -177,6 +178,9 @@ public:
         cb.GetOutput(m_Output);
         return res;
     }
+    // option to open output file, if needed and
+    // modify the command
+    virtual void OpenOutputFile(CFile& File, CString& Command) {}
 protected:
     CComPtr<IDebugClient> m_Client;
     CComPtr<IDebugControl> m_Control;
@@ -191,6 +195,32 @@ protected:
     CStringArray m_Output;
 private:
     bool m_Verbose = false;
+    CFile m_File;
+};
+
+class CDumpNameGetter : public CExternalCommandParser
+{
+public:
+    CDumpNameGetter(PDEBUG_CLIENT Client) :
+        CExternalCommandParser(Client, "dx -r0 Debugger.Sessions[0]")
+    {
+        LOG("%s", __FUNCTION__);
+    }
+    CString Parse()
+    {
+        for (UINT i = 0; i < m_Output.GetCount(); ++i) {
+            m_Output[i].MakeLower();
+            if (m_Output[i].Find(".dmp") > 0) {
+                CString s = m_Output[i];
+                LOG("Found %s", s.GetString());
+                s.Delete(0, 6 + s.Find("dump:"));
+                s.Delete(s.ReverseFind('\\'), MAXINT16);
+                LOG("Assuming %s", s.GetString());
+                return s;
+            }
+        }
+        return "";
+    }
 };
 
 class CTestCommand : public CExternalCommandParser
@@ -351,29 +381,6 @@ private:
         CString s;
         s.Format("!lmi %s.sys", Name);
         return s;
-    }
-};
-
-class CDumpNameGetter : public CExternalCommandParser
-{
-public:
-    CDumpNameGetter(PDEBUG_CLIENT Client) :
-        CExternalCommandParser(Client, "dx -r0 Debugger.Sessions[0]")
-    {}
-    CString Parse()
-    {
-        for (UINT i = 0; i < m_Output.GetCount(); ++i) {
-            m_Output[i].MakeLower();
-            if (m_Output[i].Find(".dmp") > 0) {
-                CString s = m_Output[i];
-                LOG("Found %s", s.GetString());
-                s.Delete(0, 6 + s.Find("dump:"));
-                s.Delete(s.ReverseFind('\\'), MAXINT16);
-                LOG("Assuming %s", s.GetString());
-                return s;
-            }
-        }
-        return "";
     }
 };
 
