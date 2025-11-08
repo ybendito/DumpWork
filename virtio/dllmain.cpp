@@ -89,8 +89,12 @@ class CDebugOutputCallback :
     public IDebugOutputCallbacks
 {
 public:
-    CDebugOutputCallback(PDEBUG_CLIENT Client) : m_Client(Client)
+    CDebugOutputCallback(PDEBUG_CLIENT Client, HANDLE File = NULL) : m_Client(Client), m_File(File)
     {
+        if (m_File == CFile::hFileNull) {
+            m_File = NULL;
+        }
+        LOG("Using %s output", m_File ? "file" : "debug");
         m_Client->GetOutputCallbacks(&m_Previous);
         m_Client->SetOutputCallbacks(this);
     }
@@ -124,11 +128,15 @@ protected:
         _In_ PCSTR Text
         ) override
     {
-        CString s = Text;
-        s.Trim();
-        if (!s.IsEmpty()) {
-            VERBOSE("got#%02d %s", (int)m_Output.GetCount(), Text);
-            m_Output.Add(s);
+        if (m_File) {
+            WriteFile(m_File, Text, (ULONG)strlen(Text), NULL, NULL);
+        } else {
+            CString s = Text;
+            s.Trim();
+            if (!s.IsEmpty()) {
+                VERBOSE("got#%02d %s", (int)m_Output.GetCount(), s.GetString());
+                m_Output.Add(s);
+            }
         }
         return S_OK;
     }
@@ -143,6 +151,7 @@ private:
     STDMETHOD_(ULONG, Release)(THIS) override {
         return CUnknown::Release();
     }
+    HANDLE m_File = NULL;
 };
 
 class CExternalCommandParser
