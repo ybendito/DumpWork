@@ -35,6 +35,10 @@ public:
     {
         Set();
     }
+    void Clear()
+    {
+        ResetEvent(m_Handle);
+    }
 };
 
 class CSemaphore : public CWaitableObject
@@ -183,7 +187,7 @@ protected:
 class CProcessRunner
 {
 public:
-    // WaitTime = 0 starts the process as orphan, without waiting for termination
+    // WaitTime = 0 starts the process without waiting for termination
     // WaitTime < INFINITE gives a possibility to do some action when the
     //     process is running and decide when to kill it
     CProcessRunner(bool Redirect = false, ULONG WaitTime = INFINITE) :
@@ -195,6 +199,11 @@ public:
         {
             m_Redirect = false;
         }
+    }
+    ~CProcessRunner()
+    {
+        // for m_WaitTime = 0
+        Clean();
     }
     void SetHidden() { m_Hidden = true; }
     void SetIntermediateWait(ULONG Millies)
@@ -242,7 +251,7 @@ public:
                 m_CumulativeWait += m_IntermediateWait;
                 if (ShouldTerminate(m_CumulativeWait, m_WaitTime)) {
                     Terminate();
-                } else {
+                } else if (m_Redirect) {
                     LOG(" pid %d(%X) is running %d ms, collected Out %d, Err %d",
                         pi.dwProcessId, pi.dwProcessId, m_CumulativeWait,
                         StdOutResult().GetLength(), StdErrResult().GetLength());
@@ -261,15 +270,16 @@ public:
         {
             LOG(" Running %s failed, error %d", CommandLine.GetString(), GetLastError());
         }
-        if (pi.hProcess) CloseHandle(pi.hProcess);
-        if (pi.hThread) CloseHandle(pi.hThread);
-        Clean();
+        if (m_WaitTime)
+        {
+            Clean();
+        }
     }
     const CString& StdOutResult() const { return m_StdOutResult; }
     const CString& StdErrResult() const { return m_StdErrResult; }
 protected:
-    STARTUPINFO si;
-    PROCESS_INFORMATION pi;
+    STARTUPINFO si = {};
+    PROCESS_INFORMATION pi = {};
     CPipe m_StdOut;
     CPipe m_StdErr;
     CPipe m_StdIn;
@@ -277,6 +287,8 @@ protected:
     CString m_StdErrResult;
     void Clean()
     {
+        if (pi.hProcess) CloseHandle(pi.hProcess);
+        if (pi.hThread) CloseHandle(pi.hThread);
         memset(&si, 0, sizeof(si));
         memset(&pi, 0, sizeof(pi));
     }
@@ -394,7 +406,6 @@ int FORCEINLINE CountLines(const CString& String)
     }
     return nFiles;
 }
-
 
 class SystemInfo
 {
