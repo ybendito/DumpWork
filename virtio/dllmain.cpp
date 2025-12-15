@@ -1692,8 +1692,9 @@ public:
         CIommuDetect d(m_Client);
         bool b = d.Present();
         Output("IOMMU %s\n", b ? "present" : "not present");
-
         DumpFlags<ULONG, eHV_FLAG_TYPE>("HvlpFlags");
+        ULONG accepted = 0;
+        GetValue<ULONG>("HvlEnlightenments", accepted);
         DumpFlags<ULONG, eHV_ENLIGHTMENT_TYPE>("HvlpEnlightenments");
         ULONG rootFlags = 0;
         GetValue<ULONG>("HvlpRootFlags", rootFlags);
