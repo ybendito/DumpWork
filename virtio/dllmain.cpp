@@ -759,6 +759,7 @@ protected:
         Output("findpdb <directory> - recursive find and append to symbol path\n");
         Output("hv                  - dump Hyper-V fields\n");
         Output("cn                  - get computer name\n");
+        Output("kshared             - get kshared stuff\n");
     }
 
     void TriggerSymbolLoading(LPCSTR ModuleName)
@@ -1209,6 +1210,21 @@ protected:
         }
         return bOK;
     }
+    static const ULONG64 KI_USER_SHARED_DATA = 0xFFFFF78000000000UI64; // see wdm.h
+    LARGE_INTEGER CrashTime()
+    {
+        LARGE_INTEGER li;
+        ULONG size = sizeof(li);
+        ReadMemory(KI_USER_SHARED_DATA + 0x14, &li, size, &size);
+        return li;
+    }
+    LARGE_INTEGER TimeZoneBias()
+    {
+        LARGE_INTEGER li;
+        ULONG size = sizeof(li);
+        ReadMemory(KI_USER_SHARED_DATA + 0x20, &li, size, &size);
+        return li;
+    }
 
 protected:
     CComPtr<IDebugControl> m_Control;
@@ -1492,6 +1508,7 @@ public:
             Output("   e    evaluate as is\n");
             Output("   g    read global variable\n");
             Output("   t    traverse from type to fields\n");
+            Output("   ts   read as timestamp (system time)\n");
             Output("   d    read as dword or less\n");
             Output("   p    read as pointer\n");
             Output("   s    get size, offset, type\n");
@@ -1542,7 +1559,7 @@ public:
             return;
         }
 
-        if (!params[0].CompareNoCase("s") || !params[0].CompareNoCase("a")) {
+        if (!params[0].CompareNoCase("s") || !params[0].CompareNoCase("a") || !params[0].CompareNoCase("ts")) {
             CFieldParser parser;
             CFieldInfo& f = parser.Info();
             names.InsertAt(0, m_MainContext);
@@ -1553,6 +1570,16 @@ public:
             {
                 case 's':
                     return;
+                case 't':
+                    if (f.Size() == sizeof(val)) {
+                        ReadMemory(f.Offset(), &val, f.Size(), NULL);
+                        LARGE_INTEGER crashTime = CrashTime();
+                        val.QuadPart -= crashTime.QuadPart;
+                        val.QuadPart = val.QuadPart / 10000;
+                        Output("%s = crash time %+d ms\n", f.Name(), val.LowPart);
+                        break;
+                    }
+                    // fallback to 'auto' if the size is not suitable
                 case 'a':
                     if (!f.IsReal() || f.Size() > 8)
                         break;
@@ -1662,10 +1689,11 @@ protected:
 // CDebugExtensionNet static data
 CDebugExtensionNet::CStaticData CDebugExtensionNet::StaticData;
 
-class CDebugExtensionHv : public CDebugExtension
+class CDebugExtensionNt : public CDebugExtension
 {
 public:
-    CDebugExtensionHv(PDEBUG_CLIENT Client) : CDebugExtension(Client, "nt", "DUMMY") {}
+    CDebugExtensionNt(PDEBUG_CLIENT Client) : CDebugExtension(Client, "nt", "DUMMY") {}
+    // TODO: move templates to base class
     template <typename VALTYPE> bool GetValue(LPCSTR Name, VALTYPE& Val)
     {
         CFieldInfo info;
@@ -1687,7 +1715,7 @@ public:
             Output("%s", table.GetString());
         }
     }
-    void Dump()
+    void DumpHv()
     {
         CIommuDetect d(m_Client);
         bool b = d.Present();
@@ -1700,6 +1728,20 @@ public:
         GetValue<ULONG>("HvlpRootFlags", rootFlags);
         UCHAR isSecureKernel = 0;
         GetValue<UCHAR>("VslVsmEnabled", isSecureKernel);
+    }
+    void DumpKShared() // just to make sure we read everything correctly
+    {
+        LARGE_INTEGER t = CrashTime();
+        LARGE_INTEGER tz = TimeZoneBias();
+        FILETIME ft;
+        ft.dwLowDateTime = t.LowPart;
+        ft.dwHighDateTime = t.HighPart;
+        SYSTEMTIME st;
+        FileTimeToSystemTime(&ft, &st);
+        LONG tzHours = (ULONG)(tz.QuadPart / (3600LL * 10000000));
+        Output("crash timestamp 0x%p\n", (PVOID)t.QuadPart);
+        Output("%d.%d.%d %d:%d:%d.%03d ", st.wDay, st.wMonth, st.wYear, st.wHour, st.wMinute, st.wSecond, st.wMilliseconds);
+        Output("TZ bias %I64d, %d hours\n", tz.QuadPart, tzHours);
     }
 };
 
@@ -1751,8 +1793,8 @@ extern "C" __declspec(dllexport) HRESULT query(IN PDEBUG_CLIENT Client, IN PCSTR
 extern "C" __declspec(dllexport) HRESULT hv(IN PDEBUG_CLIENT Client, IN PCSTR Args)
 {
     VERBOSE("%s: =>", __FUNCTION__);
-    CDebugExtensionHv e(Client);
-    e.Dump();
+    CDebugExtensionNt e(Client);
+    e.DumpHv();
     VERBOSE("%s: <=", __FUNCTION__);
     return S_OK;
 }
@@ -1760,11 +1802,18 @@ extern "C" __declspec(dllexport) HRESULT hv(IN PDEBUG_CLIENT Client, IN PCSTR Ar
 extern "C" __declspec(dllexport) HRESULT cn(IN PDEBUG_CLIENT Client, IN PCSTR Args)
 {
     VERBOSE("%s: =>", __FUNCTION__);
-    CDebugExtensionNet e(Client);
+    CDebugExtensionNt e(Client);
     e.cn();
     return S_OK;
 }
 
+extern "C" __declspec(dllexport) HRESULT kshared(IN PDEBUG_CLIENT Client, IN PCSTR Args)
+{
+    VERBOSE("%s: =>", __FUNCTION__);
+    CDebugExtensionNt e(Client);
+    e.DumpKShared();
+    return S_OK;
+}
 
 #if !THIS_IS_WINDBG_EXTENSION
 
