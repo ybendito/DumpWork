@@ -520,3 +520,98 @@ private:
         return m_SysInfo.m_Info->dwAllocationGranularity;
     }
 };
+
+class CProcessToken
+{
+public:
+    CProcessToken()
+    {
+        OpenProcessToken(GetCurrentProcess(), TOKEN_ALL_ACCESS, &m_Token);
+    }
+    ~CProcessToken()
+    {
+        if (m_Token) {
+            CloseHandle(m_Token);
+        }
+    }
+    bool Valid() const { return m_Token; }
+    operator HANDLE() const { return m_Token; }
+    bool GetPrivileges(CStringArray& Names, CStringArray& States)
+    {
+        if (!Valid()) {
+            return false;
+        }
+        struct
+        {
+            TOKEN_PRIVILEGES header;
+            LUID_AND_ATTRIBUTES attr[256];
+        } Info;
+        ULONG len;
+        if (!GetTokenInformation(m_Token, TokenPrivileges, &Info, sizeof(Info), &len)) {
+            return false;
+        }
+        for (UINT i = 0; i < Info.header.PrivilegeCount; ++i) {
+            LUID_AND_ATTRIBUTES& data = Info.header.Privileges[i];
+            char name[MAX_PATH];
+            ULONG len = ARRAYSIZE(name);
+            if (!LookupPrivilegeName(NULL, &data.Luid, name, &len)) {
+
+            } else {
+                Names.Add(name);
+                States.Add(StringFromAttribute(data.Attributes));
+            }
+        }
+        return true;
+    }
+    bool AddPrivilege(LPCSTR Name)
+    {
+        if (!Valid()) {
+            return false;
+        }
+        TOKEN_PRIVILEGES priv;
+        if (!LookupPrivilegeValue(NULL, Name, &priv.Privileges->Luid)) {
+            return false;
+        }
+        priv.PrivilegeCount = 1;
+        priv.Privileges->Attributes = SE_PRIVILEGE_ENABLED;
+        return AdjustTokenPrivileges(m_Token, false, &priv, sizeof(priv), NULL, 0);
+    }
+private:
+    static CString StringFromAttribute(ULONG Attribute)
+    {
+        return (Attribute & SE_PRIVILEGE_ENABLED) ? "Enabled" : "Disabled";
+    }
+    HANDLE m_Token = NULL;
+};
+
+class CPrivilege
+{
+public:
+    bool Get(CStringArray& Names, CStringArray& States)
+    {
+        return m_Token.GetPrivileges(Names, States);
+    }
+    bool Add(LPCSTR PrivilegeName)
+    {
+        return m_Token.AddPrivilege(PrivilegeName);
+    }
+protected:
+    CProcessToken m_Token;
+};
+
+ULONG FORCEINLINE GetNumber(LPCSTR String)
+{
+    char* end = NULL;
+    ULONG val = strtoul(String, &end, 10);
+    if (val) {
+        LONG scale = 1;
+        if (end && *end) switch (*end)
+        {
+            case 'm': case 'M': scale = 1024 * 1024; break;
+            case 'k': case 'K': scale = 1024; break;
+            default: break;
+        }
+        val *= scale;
+    }
+    return val;
+}
