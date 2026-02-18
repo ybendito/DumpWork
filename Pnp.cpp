@@ -209,6 +209,12 @@ public:
             if (strings[i].Find(Filter) >= 0)
                 return true;
         }
+        // try devinst
+        CStringW s = Id();
+        s.MakeLower();
+        if (s.Find(Filter) >= 0)
+            return true;
+
         return false;
     }
 protected:
@@ -321,7 +327,7 @@ public:
 protected:
     HDEVINFO m_Devinfo;
     CArray<CDeviceInfo> m_Devices;
-    CStringW m_Filter;
+    CStringW m_Filter; // initialized as lowercase
 };
 
 
