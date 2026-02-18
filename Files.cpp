@@ -163,6 +163,25 @@ static void VerifyTestFile(LPCSTR Name, ULONGLONG* Buffer, ULONG NumberOfUnits, 
     LOG("");
 }
 
+static void JustReadTestFile(LPCSTR Name, PVOID Buffer, ULONG BufferSize, bool Uncached, bool WinApi)
+{
+    ULONGLONG countBytes = 1024L * 1024L * (ULONGLONG)Config().Count;
+    ULONG rounds = (ULONG)(countBytes / BufferSize);
+    CFileReader fr;
+    if (!fr.Open(Name, Uncached, WinApi)) {
+        return;
+    }
+    ULONGLONG fileOffset = 0;
+    ULONG percentage = 0;
+    for (ULONGLONG i = 0; i < rounds; ++i) {
+        if (!fr.Read(Buffer, BufferSize)) {
+            ERR("Error reading %s, offset 0x%I64X", Name, i);
+            break;
+        }
+    }
+}
+
+
 #if 0
 static int VerifyTestFile2(LPCSTR Name)
 {
@@ -245,7 +264,10 @@ static int _Verify(const CStringArray& Parameters, bool Uncached, bool WinAPI)
         LOG("can't allocate memory block");
         return 1;
     }
-    VerifyTestFile(Parameters[0], buffer, numOfUnits, Uncached, WinAPI);
+    ULONG loops = Config().Loops;
+    for (ULONG i = 0; i <= loops; ++i) {
+        VerifyTestFile(Parameters[0], buffer, numOfUnits, Uncached, WinAPI);
+    }
     delete[] buffer;
 
     return 0;
@@ -264,6 +286,32 @@ static int _VerifyTestFileCrt(const CStringArray& Parameters)
 static int _VerifyTestFileApiUncached(const CStringArray& Parameters)
 {
     return _Verify(Parameters, true, true);
+}
+
+static int _JustReadUncached(const CStringArray& Parameters)
+{
+    ULONG bufferSize = GetNumber(Parameters[1]);
+    if (!Config().Count) {
+        LOG("-count:<value> is mandatory");
+        return 1;
+    }
+    if (!bufferSize) {
+        LOG("buffer size parameter is mandatory");
+        return 1;
+    }
+
+    PVOID buffer = new BYTE[bufferSize];
+    if (!buffer) {
+        LOG("can't allocate memory block");
+        return 1;
+    }
+    ULONG loops = Config().Loops;
+    for (ULONG i = 0; i <= loops; ++i) {
+        JustReadTestFile(Parameters[0], buffer, bufferSize, true, true);
+    }
+    delete[] buffer;
+
+    return 0;
 }
 
 static int GetFSCache(const CStringArray& Parameters)
@@ -349,6 +397,7 @@ public:
         DeclareCommand("verify-api", _VerifyTestFileApi, 2, 0);
         DeclareCommand("verify-crt", _VerifyTestFileCrt, 2, 0);
         DeclareCommand("verify-uc", _VerifyTestFileApiUncached, 2, 0);
+        DeclareCommand("read-uc", _JustReadUncached, 2, 0);
         DeclareCommand("cache-get", GetFSCache, 0, 0);
         DeclareCommand("cache-set", SetFSCache, 1, fMoreOK);
         DeclareCommand("cache-flush", FlushFSCache, 0, 0);
@@ -363,6 +412,7 @@ private:
         a.Add("verify-api\t<filename> <blocksize> -count:size>\tverify file (WinApi), count=size in MBs");
         a.Add("verify-crt\t<filename> <blocksize> -count:size>\tverify file (crt), blocksize (bytes), count=size in MBs");
         a.Add("verify-uc\t<filename> <blocksize> -count:size>\tverify file (uncached), count=size in MBs");
+        a.Add("read-uc\t<filename> <blocksize> -count:size>\tjust read the file (uncached), count=size in MBs");
         a.Add("cache-get");
         a.Add("cache-set <minlimit MB, 0 to disable> [maxlimit MB]");
         a.Add("cache-flush");
