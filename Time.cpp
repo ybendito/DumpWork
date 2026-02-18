@@ -53,6 +53,21 @@ int CTimeHandler::ReportPerfCounter(const CStringArray& Parameters)
 int CTimeHandler::Measure(const CStringArray& Parameters)
 {
     CString s = Parameters[0];
+
+    if (s[0] == '!') {
+        CStringArray newParam;
+        s.Delete(0);
+        newParam.Add(s);
+        for (UINT i = 1; i < Parameters.GetCount(); ++i) {
+            newParam.Add(Parameters[i]);
+        }
+        ULONG t1 = GetTickCount();
+        int res = RunSubcommand(newParam);
+        ULONG t2 = GetTickCount();
+        LOG("Done(%d) in %d ms", res, t2 - t1);
+        return res;
+    }
+
     for (UINT i = 1; i < Parameters.GetCount(); ++i) {
         s += ' ';
         s += Parameters[i];
