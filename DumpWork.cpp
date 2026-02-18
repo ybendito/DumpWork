@@ -53,6 +53,31 @@ static void ProcessConfig(CStringArray& a)
     }
 }
 
+int RunSubcommand(CStringArray& params)
+{
+    auto& handlers = CCommandHandler::m_Handlers;
+    for (UINT i = 0; i < handlers.GetCount(); ++i) {
+        auto h = handlers[i];
+        CString token = params[0];
+        if (!h->Token().CompareNoCase(token)) {
+            if (Config().Help) {
+                return h->Usage();
+            }
+            params.RemoveAt(0);
+            UINT paramSize = (UINT)params.GetCount();
+            if (h->MinParams() > paramSize) {
+                ERR("%s requires minimum of %d parameters", token.GetString(), h->MinParams());
+                return h->Usage();
+            }
+            if (h->HasCommands()) {
+                return h->ProcessCommand(params);
+            }
+            return h->Run(params);
+        }
+    }
+    return 1;
+}
+
 int main(int argc, char **argv)
 {
     CStringArray params;

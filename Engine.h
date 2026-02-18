@@ -129,3 +129,4 @@ struct tConfiguration
 };
 
 FORCEINLINE const tConfiguration& Config() { return tConfiguration::m_ConfigurationForCfgOnly;  }
+int RunSubcommand(CStringArray& params);
