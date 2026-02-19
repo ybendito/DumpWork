@@ -122,8 +122,8 @@ struct tConfiguration
 {
     bool Help;
     bool Wait;
-    bool Loop;
     bool Gui;
+    UINT Loops;
     UINT Count;
     static tConfiguration m_ConfigurationForCfgOnly;
 };

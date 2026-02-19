@@ -155,14 +155,14 @@ static int PerfCounter(const CStringArray& Parameters)
     puts("Hit Escape to stop...");
     while (!_kbhit())
     {
-        if (!q.Poll(&val, 1) && !Config().Loop)
+        if (!q.Poll(&val, 1) && !Config().Loops)
             break;
         if (limit >= 0 && val >= limit) {
             consecutive++;
             if (consecutive >= count) {
                 consecutive = 0;
                 RunAction(Parameters);
-                if (!Config().Loop)
+                if (!Config().Loops)
                     break;
             }
         } else {

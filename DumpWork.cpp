@@ -41,8 +41,8 @@ static void ProcessConfig(CStringArray& a)
             cfg.Help = true;
         } else if (s.Find("wait") == 0) {
             cfg.Wait = true;
-        } else if (s.Find("loop") == 0) {
-            cfg.Loop = true;
+        } else if (FindValue(s, "loop", cfg.Loops)) {
+            // ok
         } else if (s.Find("gui") == 0) {
             cfg.Gui = true;
         } else if (FindValue(s, "count", cfg.Count)) {
