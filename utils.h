@@ -425,7 +425,7 @@ private:
 class CMemoryMappedFile
 {
 public:
-    CMemoryMappedFile(ULONG MegaBytes, bool MapAll = true)
+    CMemoryMappedFile(ULONG MegaBytes, bool MapAll = true, LPCSTR Name = NULL)
     {
         m_Size = MegaBytes * MB;
         m_Handle = CreateFileMapping(
@@ -434,7 +434,7 @@ public:
             PAGE_READWRITE,
             (DWORD)((m_Size >> 32) & 0xFFFFFFFF),
             (DWORD)(m_Size & 0xFFFFFFFF),
-            nullptr
+            Name
         );
         if (m_Handle) {
             if (MapAll) {
