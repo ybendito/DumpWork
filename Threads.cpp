@@ -1,7 +1,5 @@
 #include "stdafx.h"
 
-#define MEM_SIZE_MB     1024
-
 thread_local LONGLONG gThreadPokes = 0;
 
 class CLoadingThread : public CThreadOwner
@@ -30,21 +28,28 @@ private:
 class CLoadingThreadMemory : public CLoadingThread
 {
 public:
-    CLoadingThreadMemory(CWaitableObject& WaitOn) : CLoadingThread(WaitOn)
+    CLoadingThreadMemory(CWaitableObject& WaitOn, LPCSTR Name) :
+        CLoadingThread(WaitOn),
+        m_Name(Name)
     {
 
     }
 private:
     void ThreadProc() override
     {
+        ULONG sizeMB = Config().Count;
+        if (!sizeMB) sizeMB = 1;
+
         __super::ThreadProc();
+
         while (ShouldContinueRunning()) {
-            CMemoryMappedFile f(MEM_SIZE_MB);
+            CMemoryMappedFile f(sizeMB, false, m_Name);
             auto n = f.Poke();
             //LOG("+%d", n);
             gThreadPokes += n;
         }
     }
+    CString m_Name;
 };
 
 class CLoadingThreadCpu : public CLoadingThread
@@ -330,10 +335,10 @@ private:
     }
     void AddThread()
     {
-        const char* cmdLine = m_Parameters.GetCount() > 2 ? m_Parameters[2] : "";
+        const char* cmdLine = m_Parameters.GetCount() > 2 ? m_Parameters[2] : NULL;
         CLoadingThread* p = NULL;
         if (!m_Activity.CompareNoCase("mem")) {
-            p = new CLoadingThreadMemory(m_Semaphore);
+            p = new CLoadingThreadMemory(m_Semaphore, cmdLine);
         } else if (!m_Activity.CompareNoCase("run")) {
             p = new CLoadingThreadRunProcess(m_Semaphore, cmdLine);
         } else if (!m_Activity.CompareNoCase("cpu")) {
@@ -376,7 +381,7 @@ static int CreateThreads(const CStringArray& Parameters)
 class CThreadsHandler : public CCommandHandler
 {
 public:
-    CThreadsHandler() : CCommandHandler("load", "Load CPU by threads", 2) {}
+    CThreadsHandler() : CCommandHandler("threads", "Run multiple threads for various activities", 2) {}
 private:
     int Run(const CStringArray& Parameters) override
     {
@@ -385,7 +390,7 @@ private:
     void Help(CStringArray& a) override
     {
         a.Add("cpu   <number of threads>");
-        a.Add("mem   <number of threads>");
+        a.Add("mem   <number of threads> <section-name> [-Count:sizeInMB(default=1)]");
         a.Add("wfile <number of threads>");
         a.Add("rfile <number of threads>");
         a.Add("run   <number of threads> <cmd line>");
