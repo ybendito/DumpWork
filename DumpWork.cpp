@@ -7,7 +7,13 @@ tConfiguration tConfiguration::m_ConfigurationForCfgOnly;
 static int Usage()
 {
     auto& handlers = CCommandHandler::m_Handlers;
-    puts("DumpWork: various utilities");
+    puts("DumpWork <common switches> command <command-specific parameters>");
+    puts("Common switches:");
+    puts("\t-Count:<counter>");
+    puts("\t-Time:<time in seconds>");
+    puts("\t-Loop:<loops>");
+    puts("\t-Wait");
+    puts("\t-Gui");
     for (UINT i = 0; i < handlers.GetSize(); ++i) {
         auto h = handlers[i];
         printf("%s\t\t\t%s\n", h->Token().GetString(), h->Description().GetString());
