@@ -124,6 +124,7 @@ struct tConfiguration
     bool Wait;
     bool Gui;
     UINT Loops;
+    UINT Time;
     UINT Count;
     static tConfiguration m_ConfigurationForCfgOnly;
 };

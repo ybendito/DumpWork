@@ -47,6 +47,8 @@ static void ProcessConfig(CStringArray& a)
             cfg.Gui = true;
         } else if (FindValue(s, "count", cfg.Count)) {
             // ok
+        } else if (FindValue(s, "time", cfg.Time)) {
+            // ok
         } else {
             LOG("Unrecognized config %s", s.GetString());
         }

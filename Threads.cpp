@@ -43,10 +43,13 @@ private:
         __super::ThreadProc();
 
         while (ShouldContinueRunning()) {
-            CMemoryMappedFile f(sizeMB, false, m_Name);
-            auto n = f.Poke();
-            //LOG("+%d", n);
-            gThreadPokes += n;
+            if (1) {
+                CMemoryMappedFile f(sizeMB, false, m_Name);
+                auto n = f.Poke();
+                //LOG("+%d", n);
+                gThreadPokes += n;
+            }
+            Sleep(0);
         }
     }
     CString m_Name;
@@ -284,7 +287,16 @@ public:
     }
     void ProcessInput()
     {
-        while (!m_Interactive) Sleep(1000);
+        UINT timeCounter = 0;
+        while (!m_Interactive) {
+            Sleep(1000);
+            if (Config().Time) {
+                timeCounter++;
+                if (timeCounter >= Config().Time) {
+                    return;
+                }
+            }
+        }
 
         puts("Interactive mode: q to exit");
         puts("i(nc),d(ec),t(read add),b(usy loop toggle)");
@@ -367,14 +379,16 @@ private:
 
 static int CreateThreads(const CStringArray& Parameters)
 {
-    const char* Activity = Parameters[0];
-    const char* Param = Parameters[1];
-
-
-    CThreadCollection t(Parameters);
-
-    t.ProcessInput();
-
+    UINT maxLoops = Config().Loops;
+    if (!maxLoops) maxLoops = 1;
+    for (UINT loopCount = 0; loopCount < maxLoops; ++loopCount) {
+        // scope
+        {
+            CThreadCollection t(Parameters);
+            t.ProcessInput();
+        }
+        Sleep(5000);
+    }
     return 0;
 }
 
