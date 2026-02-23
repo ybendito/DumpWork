@@ -43,12 +43,11 @@ private:
         __super::ThreadProc();
 
         while (ShouldContinueRunning()) {
-            if (1) {
-                CMemoryMappedFile f(sizeMB, false, m_Name);
-                auto n = f.Poke();
-                //LOG("+%d", n);
-                gThreadPokes += n;
-            }
+            Sleep(0);
+            CMemoryMappedFile f(sizeMB, false, m_Name);
+            auto n = f.Poke();
+            //LOG("+%d", n);
+            gThreadPokes += n;
             Sleep(0);
         }
     }
