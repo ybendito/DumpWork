@@ -425,20 +425,20 @@ private:
 class CMemoryMappedFile
 {
 public:
-    CMemoryMappedFile(ULONG MegaBytes, bool MapAll = true, LPCSTR Name = NULL)
+    CMemoryMappedFile(ULONG MegaBytes, bool MapAll = true, LPCSTR Name = NULL, HANDLE FileHandle = INVALID_HANDLE_VALUE, bool ReadOnly = false)
     {
         m_Size = MegaBytes * MB;
         m_Handle = CreateFileMapping(
-            INVALID_HANDLE_VALUE,        // Pagefile-backed
+            FileHandle,                  // Pagefile-backed = INVALID_HANDLE_VALUE
             nullptr,                     // Default security
-            PAGE_READWRITE,
+            ReadOnly ? PAGE_READONLY : PAGE_READWRITE,
             (DWORD)((m_Size >> 32) & 0xFFFFFFFF),
             (DWORD)(m_Size & 0xFFFFFFFF),
             Name
         );
         if (m_Handle) {
             if (MapAll) {
-                m_Buffer = (PCHAR)MapAndForget(false);
+                m_Buffer = (PCHAR)MapAndForget(false, ReadOnly);
             }
         }
         else {
@@ -465,13 +465,13 @@ public:
         }
         return true;
     }
-    PVOID MapAndForget(bool DoTouch)
+    PVOID MapAndForget(bool DoTouch, bool ReadOnly = false)
     {
-        PVOID p = MapViewOfFile(m_Handle, FILE_MAP_WRITE, 0, 0, m_Size);
+        PVOID p = MapViewOfFile(m_Handle, ReadOnly ? FILE_MAP_READ : FILE_MAP_WRITE, 0, 0, m_Size);
         if (!p) {
             LOG("can't map view of file, error %d", GetLastError());
         }
-        if (DoTouch) {
+        if (DoTouch && !ReadOnly) {
             Touch((PCHAR)p);
         }
         return p;
