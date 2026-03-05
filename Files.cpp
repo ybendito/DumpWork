@@ -41,6 +41,10 @@ public:
         }
         return m_File.Read(Buffer, Size) == Size;
     }
+    operator HANDLE() const
+    {
+        return m_File.m_hFile;
+    }
 private:
     FILE* m_FilePtr = NULL;
     CFile m_File;
@@ -173,6 +177,7 @@ static void JustReadTestFile(LPCSTR Name, PVOID Buffer, ULONG BufferSize, bool U
     }
     ULONGLONG fileOffset = 0;
     ULONG percentage = 0;
+
     for (ULONGLONG i = 0; i < rounds; ++i) {
         if (!fr.Read(Buffer, BufferSize)) {
             ERR("Error reading %s, offset 0x%I64X", Name, i);
@@ -265,7 +270,8 @@ static int _Verify(const CStringArray& Parameters, bool Uncached, bool WinAPI)
         return 1;
     }
     ULONG loops = Config().Loops;
-    for (ULONG i = 0; i <= loops; ++i) {
+    if (!loops) loops = 1;
+    for (ULONG i = 0; i < loops; ++i) {
         VerifyTestFile(Parameters[0], buffer, numOfUnits, Uncached, WinAPI);
     }
     delete[] buffer;
@@ -288,12 +294,13 @@ static int _VerifyTestFileApiUncached(const CStringArray& Parameters)
     return _Verify(Parameters, true, true);
 }
 
-static int _JustReadUncached(const CStringArray& Parameters)
+static int PrepareAndCall(const CStringArray& Parameters, void (*Func)(LPCSTR FileName, PVOID Buffer, ULONG BufferSize))
 {
     ULONG bufferSize = GetNumber(Parameters[1]);
+    CString fileName = Parameters[0];
+    bool doFormat = fileName.Find('%') >= 0;
     if (!Config().Count) {
-        LOG("-count:<value> is mandatory");
-        return 1;
+        LOG("Count is 0, will just open-close!");
     }
     if (!bufferSize) {
         LOG("buffer size parameter is mandatory");
@@ -306,11 +313,55 @@ static int _JustReadUncached(const CStringArray& Parameters)
         return 1;
     }
     ULONG loops = Config().Loops;
-    for (ULONG i = 0; i <= loops; ++i) {
-        JustReadTestFile(Parameters[0], buffer, bufferSize, true, true);
+    ULONG outerloops = Config().OuterLoops;
+    if (!loops) loops = 1;
+    if (!outerloops) outerloops = 1;
+    if (loops > 1 || outerloops > 1) {
+        LOG("Running loops: %d:%d", outerloops, loops);
+    }
+
+    for (ULONG j = 0; j < outerloops; ++j) {
+        for (ULONG i = 0; i < loops; ++i) {
+            CString formatted;
+            if (doFormat) {
+                formatted.Format(fileName, i);
+            }
+            Func(doFormat ? formatted : fileName, buffer, bufferSize);
+        }
     }
     delete[] buffer;
 
+    return 0;
+}
+
+static int JustReadUncached(const CStringArray& Parameters)
+{
+    PrepareAndCall(Parameters, [](LPCSTR FileName, PVOID Buffer, ULONG BufferSize)
+        {
+            JustReadTestFile(FileName, Buffer, BufferSize, true, true);
+        });
+    return 0;
+}
+
+static int JustReadCrt(const CStringArray& Parameters)
+{
+    PrepareAndCall(Parameters, [](LPCSTR FileName, PVOID Buffer, ULONG BufferSize)
+        {
+            JustReadTestFile(FileName, Buffer, BufferSize, false, false);
+        });
+    return 0;
+}
+
+static int MapFileToMemory(const CStringArray& Parameters)
+{
+    PrepareAndCall(Parameters, [](LPCSTR FileName, PVOID Buffer, ULONG BufferSize)
+        {
+            CFileReader fr;
+            if (!fr.Open(FileName, true, true)) {
+                return;
+            }
+            CMemoryMappedFile m(Config().Count, true, NULL, fr, true);
+        });
     return 0;
 }
 
@@ -397,7 +448,9 @@ public:
         DeclareCommand("verify-api", _VerifyTestFileApi, 2, 0);
         DeclareCommand("verify-crt", _VerifyTestFileCrt, 2, 0);
         DeclareCommand("verify-uc", _VerifyTestFileApiUncached, 2, 0);
-        DeclareCommand("read-uc", _JustReadUncached, 2, 0);
+        DeclareCommand("read-uc",  JustReadUncached, 2, 0);
+        DeclareCommand("read-crt", JustReadCrt, 2, 0);
+        DeclareCommand("read-mmf", MapFileToMemory, 2, 0);
         DeclareCommand("cache-get", GetFSCache, 0, 0);
         DeclareCommand("cache-set", SetFSCache, 1, fMoreOK);
         DeclareCommand("cache-flush", FlushFSCache, 0, 0);
@@ -413,6 +466,8 @@ private:
         a.Add("verify-crt\t<filename> <blocksize> -count:size>\tverify file (crt), blocksize (bytes), count=size in MBs");
         a.Add("verify-uc\t<filename> <blocksize> -count:size>\tverify file (uncached), count=size in MBs");
         a.Add("read-uc\t<filename> <blocksize> -count:size>\tjust read the file (uncached), count=size in MBs");
+        a.Add("read-crt\t<filename> <blocksize> -count:size>\tjust read the file (crt), count=size in MBs");
+        a.Add("read-mmf\t<filename> <blocksize> -count:size>\tmap file to memory(uncached), count=size in MBs");
         a.Add("cache-get");
         a.Add("cache-set <minlimit MB, 0 to disable> [maxlimit MB]");
         a.Add("cache-flush");
