@@ -17,7 +17,7 @@ public:
             return false;
         }
         if (!UseWinApi) {
-            m_FilePtr = fopen(Name, "r+b");
+            m_FilePtr = fopen(Name, "rb");
             if (!m_FilePtr) {
                 ERR("Error creating %s, error 0x%X", Name, errno);
             }
