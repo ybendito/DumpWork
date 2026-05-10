@@ -145,6 +145,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="bits.cpp" />
+    <ClCompile Include="Cpu.cpp" />
     <ClCompile Include="DumpWork.cpp" />
     <ClCompile Include="Files.cpp" />
     <ClCompile Include="guid.cpp" />
