@@ -24,7 +24,8 @@ public:
             return m_FilePtr;
         }
         CFileException ex;
-        UINT flags = CFile::modeRead | CFile::shareDenyRead;
+        // allow multiple threads/processes to read the same file - shareDenyWrite
+        UINT flags = CFile::modeRead | CFile::shareExclusive;
         if (Uncached) {
             flags |= CFile::osNoBuffer;
         }
@@ -50,29 +51,36 @@ private:
     CFile m_File;
 };
 
-static int HoldFile(LPCSTR Name, bool FromRead, bool FromWrite)
+static int HoldFile(LPCSTR Name, LPCSTR Param)
 {
     CFile f;
     int res = 0;
     CFileException ex;
     ULONG flags = 0;
-    if (FromRead) flags |= CFile::shareDenyRead;
-    if (FromWrite) flags |= CFile::shareDenyWrite;
-    if (f.Open(Name, CFile::modeRead | flags , &ex)) {
-        LOG("Hit Enter to stop holding %s from (%s%s)", Name, FromRead ? "R" : "", FromWrite ? "W" : "");
+    CString sModes;
+    if (strchr(Param, 'r') || strchr(Param, 'R')) {
+        flags |= CFile::shareDenyRead;
+        sModes += " read";
+    }
+    if (strchr(Param, 'w') || strchr(Param, 'W')) {
+        flags |= CFile::shareDenyWrite;
+        sModes += " write";
+    }
+    if (strchr(Param, 'n') || strchr(Param, 'N')) {
+        flags |= CFile::shareDenyNone;
+        sModes += " none";
+    }
+    if (strchr(Param, 'c') || strchr(Param, 'C')) {
+        flags |= CFile::shareCompat;
+        sModes += " compat";
+    }
+    if (f.Open(Name, CFile::modeRead | flags, &ex)) {
+        LOG("Hit Enter to stop holding %s from (%s)", Name, sModes.GetString());
         getchar();
     } else {
         ERR("Can't open, error %d", ex.m_lOsError);
-        return res;
     }
     return res;
-}
-
-static int HoldFile(LPCSTR Name, LPCSTR Param)
-{
-    bool fromRead = strchr(Param, 'r') || strchr(Param, 'R');
-    bool fromWrite = strchr(Param, 'w') || strchr(Param, 'W');
-    return HoldFile(Name, fromRead, fromWrite);
 }
 
 static int WriteTestFile(LPCSTR Name)
@@ -459,7 +467,7 @@ public:
 private:
     void Help(CStringArray& a) override
     {
-        a.Add("hold \t<filename> <r|w|rw>\tkeeps file open with r|w denial");
+        a.Add("hold \t<filename> <rwnc>\tkeeps file open with read|write|none|compat denial");
         a.Add("write \t<filename> -count:size>\twrite file for further verify, size in MBs");
         a.Add("verify\t<filename> -count:size>\tverify file, size in MBs (crt, 8 bytes)");
         a.Add("verify-api\t<filename> <blocksize> -count:size>\tverify file (WinApi), count=size in MBs");
